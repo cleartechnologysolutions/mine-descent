@@ -18,7 +18,7 @@ const assets={
 };
 const output='// Mine Descent Cloudflare Worker. Generated from src by scripts/assemble.mjs.\nconst assets = '+JSON.stringify(assets)+';\n'+`export default {async fetch(request, env, ctx) {
   const url=new URL(request.url);
-  if(url.pathname==='/health')return Response.json({status:'ok',game:'Mine Descent',version:'3.1.2'});
+  if(url.pathname==='/health')return Response.json({status:'ok',game:'Mine Descent',version:'3.2.1'});
   if(!['GET','HEAD'].includes(request.method))return new Response('Method not allowed',{status:405,headers:{Allow:'GET, HEAD'}});
   const asset=assets[url.pathname];
   if(!asset)return new Response('Not found',{status:404});

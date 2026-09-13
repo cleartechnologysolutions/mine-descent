@@ -18,7 +18,7 @@
       this._step = 0;
       this._modeStartStep = 0;
       this._nextBeat = 0;
-      this._state = { speed: 0, boost: false, combat: false, danger: 0, space: false, minehum: 1 };
+      this._state = { speed: 0, boost: false, combat: false, danger: 0, space: false, minehum: 1, reactor: 0 };
       this._ambientSources = [];
       this._nextAmbience = 0;
       this._ambientCount = 0;
@@ -107,6 +107,7 @@
       this.musicBus.connect(this.reverbSend);
       this._engineInit();
       this._ambienceInit();
+      this._reactorInit();
     }
 
     _engineInit() {
@@ -169,6 +170,18 @@
       this._nextAmbience = c.currentTime + 2.5;
     }
 
+    _reactorInit() {
+      const c=this.ctx;
+      this.reactorBus=c.createGain();this.reactorBus.gain.value=0;this.reactorBus.connect(this.limiter);
+      this.reactorFilter=c.createBiquadFilter();this.reactorFilter.type='lowpass';this.reactorFilter.frequency.value=140;this.reactorFilter.Q.value=.8;this.reactorFilter.connect(this.reactorBus);
+      // Slightly detuned industrial harmonics create a slow, ominous beat.
+      for(const [frequency,level,type]of [[49,.44,'sine'],[50.3,.26,'sine'],[98,.18,'triangle'],[196,.065,'sawtooth']]){
+        const oscillator=c.createOscillator(),gain=c.createGain();oscillator.type=type;oscillator.frequency.value=frequency;gain.gain.value=level;
+        oscillator.connect(gain);gain.connect(this.reactorFilter);oscillator.start();this._ambientSources.push(oscillator);
+      }
+      const noise=c.createBufferSource(),gain=c.createGain();noise.buffer=this.noiseBuffer;noise.loop=true;gain.gain.value=.13;noise.connect(gain);gain.connect(this.reactorFilter);noise.start();this._ambientSources.push(noise);
+    }
+
     setVolume(value) {
       this.volume = clamp(value, 0, 1);
       if (this.ctx) this.master.gain.setTargetAtTime(this.muted ? 0 : this.volume * 0.72, this.ctx.currentTime, 0.06);
@@ -210,6 +223,9 @@
       this.musicBus.gain.setTargetAtTime(danger > 0.72 ? 0.31 : s.combat ? 0.26 : s.space ? 0.30 : 0.23, t, 0.8);
       const inMine = !s.space && !['menu', 'off', 'victory'].includes(this.mode);
       this.ambientBus.gain.setTargetAtTime(inMine ? 0.15 * clamp(s.minehum, 0, 1) : 0, t, 0.8);
+      const proximity=inMine?clamp(s.reactor,0,1):0;
+      this.reactorBus.gain.setTargetAtTime(.64*Math.pow(proximity,1.4),t,.25);
+      this.reactorFilter.frequency.setTargetAtTime(140+proximity*580,t,.35);
       this.reverbSend.gain.setTargetAtTime(inMine ? 0.19 : 0.075, t, 0.6);
       if (danger > 0.72 && (!this._nextDanger || t > this._nextDanger)) {
         this._nextDanger = t + 2.8;
@@ -224,6 +240,7 @@
       if (!['mine', 'space', 'combat', 'escape', 'victory', 'menu', 'off'].includes(mode)) return;
       if (this.mode !== mode) {
         this.mode = mode;
+        if(this.ctx&&['space','victory','menu','off'].includes(mode)){this._state.reactor=0;this.reactorBus.gain.setTargetAtTime(0,this.ctx.currentTime,.15);}
         this._modeStartStep = this._step;
         if (this.ctx && ['victory', 'menu'].includes(mode)) {
           this.engineBus.gain.setTargetAtTime(0.008, this.ctx.currentTime, 0.3);
@@ -468,6 +485,19 @@
           noise(.065, .43, 3300, 1100, 'highpass', pan, t, this.sfxBus, .001);
           noise(.48, .36, 2100, 120, 'lowpass', pan, t + .012, this.sfxBus, .003);
           tone(880, 190, .38, .13, 'sawtooth', -pan, t + .03, this.sfxBus, .005, 2200);
+          break;
+        case 'doorLocked':
+          // A heavy latch bottoms out, followed by its spring and metal housing.
+          tone(112,38,.22,.68,'sine',pan,t);
+          noise(.065,.7,1800,280,'bandpass',pan,t,this.sfxBus,.001);
+          tone(390,120,.10,.17,'triangle',pan,t+.014);
+          noise(.17,.24,1050,140,'lowpass',pan,t+.075,this.sfxBus,.002);
+          tone(68,43,.14,.22,'sine',pan,t+.10);
+          break;
+        case 'unlock':
+          noise(.24,.3,2100,320,'bandpass',pan,t);
+          tone(125,43,.33,.30,'sine',pan,t);
+          tone(420,630,.18,.1,'triangle',pan,t+.13);
           break;
         case 'equip':
           noise(.11, .22, 1600, 430, 'bandpass', pan, t, this.sfxBus, .003);

@@ -1,6 +1,6 @@
 # Mine Descent — Download Package
 
-Latest game build: **3.1.2**, including the larger mines, collectible cannons, arrow strafing, burst recovery, shield pickups, low-shield warning, and improved enemy shield drops.
+Latest game build: **3.2.1**, including the big golden reactor key, keyed security bulkheads with a mechanical locked sound, louder reactor guidance, distinctive room machinery and effects, rarer shield drops, and doors that open when shot. All existing flight controls and cannon systems are included.
 
 ## Play on your computer
 

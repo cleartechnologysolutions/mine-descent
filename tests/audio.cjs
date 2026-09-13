@@ -43,7 +43,7 @@ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../src/audi
  assert.equal(await audio.start(),true);
  assert.equal(timers.size,1);
  const c=audio.ctx;
- const events=['laser','breach','vulcan','siege','equip','door','missile','enemy','explosion','reactor','hit','pickup','alarm','warp','click','robotWake','robotCharge','robotFire','robotMove','robotDeath','wardenWake','wardenCharge','wardenFire','wardenMove','wardenDeath','mineAmbience'];
+ const events=['laser','breach','vulcan','siege','equip','unlock','doorLocked','door','missile','enemy','explosion','reactor','hit','pickup','alarm','warp','click','robotWake','robotCharge','robotFire','robotMove','robotDeath','wardenWake','wardenCharge','wardenFire','wardenMove','wardenDeath','mineAmbience'];
  const result=[];
  for(const event of events){
   c.advance(10);
@@ -79,12 +79,24 @@ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../src/audi
  assert([...audio.outputCeiling.curve].every(v=>Number.isFinite(v)&&Math.abs(v)<=0.94));
  audio.music('mine');audio.update({space:false,combat:false,danger:0,minehum:1});assert.equal(audio.ambientBus.gain.value,0.15);
  audio.update({space:true});assert.equal(audio.ambientBus.gain.value,0);
+ audio.music('mine');const reactorNodes=c.nodes.length;let previousGain=-1,previousFilter=0;
+ for(const reactor of [0,.15,.35,.65,1]){
+  audio.update({space:false,combat:false,danger:0,reactor});
+  assert(audio.reactorBus.gain.value>previousGain&&audio.reactorBus.gain.value<=.65);previousGain=audio.reactorBus.gain.value;
+  assert(audio.reactorFilter.frequency.value>previousFilter);previousFilter=audio.reactorFilter.frequency.value;
+  assert.equal(audio.reactorBus.gain.events.at(-1).type,'target');
+ }
+ assert.equal(c.nodes.length,reactorNodes,'reactor proximity reuses persistent sources');
+ audio.update({space:true,reactor:1});assert.equal(audio.reactorBus.gain.value,0);
+ for(const mode of ['menu','off','victory']){audio.music('mine');audio.update({space:false,reactor:1});audio.music(mode);assert.equal(audio.reactorBus.gain.value,0);}
+ audio.music('mine');audio.update({space:false,reactor:1});
  await audio.pause();assert.equal(c.state,'suspended');assert.equal(timers.size,0);
+ const beforePausedGain=audio.reactorBus.gain.events.length;audio.update({reactor:.2});assert.equal(audio.reactorBus.gain.events.length,beforePausedGain);
  const count=c.nodes.length;audio.sfx('wardenWake');audio._schedule();assert.equal(c.nodes.length,count);
  await audio.pause(false);assert.equal(timers.size,1);await audio.start();assert.equal(timers.size,1);
  for(let i=0;i<40;i++){c.currentTime+=0.11;audio.sfx('robotDeath');}assert(audio._sources.size<=144);
  audio.setVolume(99);assert.equal(audio.volume,1);audio.setMuted(true);assert.equal(audio.master.gain.value,0);
  await audio.dispose();assert.equal(c.state,'closed');assert.equal(timers.size,0);assert.equal(audio._sources.size,0);assert.equal(audio._ambientSources.length,0);
  assert(c.nodes.filter(n=>n.started).every(n=>Number.isFinite(n.stopAt)));
- console.log(JSON.stringify({status:'PASS',eventChecks:result,musicModes:7,checks:['all voices finitely stopped and disconnected','zero intensity emits no nodes','source cap <=144','mine/space ambient fade targets','pause suspends context and blocks effects','resume creates exactly one scheduler','master volume/mute bounded','dispose closes context/stops all sources']},null,2));
+ console.log(JSON.stringify({status:'PASS',eventChecks:result,musicModes:7,checks:['all voices finitely stopped and disconnected','zero intensity emits no nodes','source cap <=144','mine/space ambient fade targets','reactor gain and timbre follow proximity without new nodes','reactor silence outside mine and during pause','pause suspends context and blocks effects','resume creates exactly one scheduler','master volume/mute bounded','dispose closes context/stops all sources']},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1});

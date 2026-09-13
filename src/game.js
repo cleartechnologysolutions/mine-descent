@@ -1,7 +1,7 @@
 import * as T from '/three.module.min.js';
 import {IndustrialArt,CinematicPass} from '/art.js';
 import {createRobot} from '/robots.js';
-import {makeMineLayout} from '/layouts.js';
+import {makeMineLayout,reactorSignal} from '/layouts.js';
 import {CANNONS,cannonById,cleanArsenal} from '/weapons.js';
 const $=id=>document.getElementById(id), clamp=(x,a,b)=>Math.max(a,Math.min(b,x)), V=(x=0,y=0,z=0)=>new T.Vector3(x,y,z);
 const canvas=$('game'),audio=new window.VoidAudio();
@@ -16,6 +16,7 @@ const keys=new Set(), mouse={left:false,right:false}, steering={x:0,y:0};
 const steeringDeadzone=.055, steeringAxis=V(), steeringRotation=new T.Quaternion();const raycaster=new T.Raycaster();
 let flightInputActive=false,pendingUpgrades=0,coreFound=false;
 let mineLayout=null,doors=[],generators=[],visitedRooms=new Set();
+let hasReactorKey=false,gateSeen=false,wingEntered=false,currentRoom=0;
 let mode='menu',zone='mine',mine=0,nextMine=1,stage='search',enemies=[],shots=[],particles=[],pickups=[],walls=[],rooms=[],links=[],spaceObjects=[],decor=[],reactor=null,time=0,toastTime=0,hitTime=0,damageFlash=0,shake=0,fireWait=0,missileWait=0,overheated=false,killCount=0,score=0,salvage=0,volume=.65,difficulty='normal',mapExpanded=false,checkpoint=null,spaceReady=false,combo=0,comboTime=0;
 let upgrades={cannon:0,shield:0,engine:0};
 let arsenal=cleanArsenal(),browsedCannon='pulse',browseUntil=0,wheelDelta=0,wheelAt=-1,cannonBurst=0,cannonRecovery=0;
@@ -31,10 +32,10 @@ function glow(color){return new T.MeshBasicMaterial({color});}
 function line(a,b,color=0x7fffe5,parent=world){const g=new T.BufferGeometry().setFromPoints([a,b]);const l=new T.Line(g,new T.LineBasicMaterial({color,transparent:true,opacity:.75}));parent.add(l);return l;}
 const starsG=new T.BufferGeometry(),starArray=[];for(let i=0;i<2800;i++){const p=V(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize().multiplyScalar(2500+Math.random()*2000);starArray.push(p.x,p.y,p.z);}starsG.setAttribute('position',new T.Float32BufferAttribute(starArray,3));const stars=new T.Points(starsG,new T.PointsMaterial({color:0xaed8ff,size:2.2,sizeAttenuation:true}));scene.add(stars);
 const cockpit=art.cockpit(camera);cockpit.visible=false;
-function clearWorld(){resetCannonBrowse();art.reset();const keepMats=new Set([rockmat,wallmat,darkmat,edgemat,goldmat]),seenMats=new Set(),seenGeo=new Set();world.traverse(o=>{if(o.geometry&&!Object.values(geometries).includes(o.geometry)&&!seenGeo.has(o.geometry)){seenGeo.add(o.geometry);o.geometry.dispose();}for(const m of (Array.isArray(o.material)?o.material:[o.material]))if(m&&!m.userData.shared&&!keepMats.has(m)&&!seenMats.has(m)){seenMats.add(m);m.userData.ownedTexture?.dispose();m.dispose();}});scene.remove(world);world=new T.Group();scene.add(world);enemies=[];shots=[];particles=[];pickups=[];walls=[];rooms=[];links=[];decor=[];spaceObjects=[];reactor=null;doors=[];generators=[];visitedRooms=new Set();coreFound=false;mineLayout=null;fireWait=0;missileWait=0;overheated=false;cannonBurst=0;cannonRecovery=0;player.heat=0;mouse.left=false;mouse.right=false;centerSteering();flashLight.intensity=0;}
+function clearWorld(){hasReactorKey=false;gateSeen=false;wingEntered=false;currentRoom=0;audio.update({reactor:0});resetCannonBrowse();art.reset();const keepMats=new Set([rockmat,wallmat,darkmat,edgemat,goldmat]),seenMats=new Set(),seenGeo=new Set();world.traverse(o=>{if(o.geometry&&!Object.values(geometries).includes(o.geometry)&&!seenGeo.has(o.geometry)){seenGeo.add(o.geometry);o.geometry.dispose();}for(const m of (Array.isArray(o.material)?o.material:[o.material]))if(m&&!m.userData.shared&&!keepMats.has(m)&&!seenMats.has(m)){seenMats.add(m);m.userData.ownedTexture?.dispose();m.dispose();}});scene.remove(world);world=new T.Group();scene.add(world);enemies=[];shots=[];particles=[];pickups=[];walls=[];rooms=[];links=[];decor=[];spaceObjects=[];reactor=null;doors=[];generators=[];visitedRooms=new Set();coreFound=false;mineLayout=null;fireWait=0;missileWait=0;overheated=false;cannonBurst=0;cannonRecovery=0;player.heat=0;mouse.left=false;mouse.right=false;centerSteering();flashLight.intensity=0;}
 function disposeGroup(group){const seen=new Set();group.traverse(o=>{if(o.geometry&&!Object.values(geometries).includes(o.geometry))o.geometry.dispose();for(const m of(Array.isArray(o.material)?o.material:[o.material]))if(m&&!m.userData.shared&&!seen.has(m)&&![rockmat,wallmat,darkmat,edgemat,goldmat].includes(m)){seen.add(m);m.userData.ownedTexture?.dispose();m.dispose();}});}
 function toast(text,seconds=3.5){$('toast').textContent=text;toastTime=seconds;$('toast').style.opacity=1;}
-function roomWall(c,axis,sign,opening,color,index){return art.wall(world,c,axis,sign,opening,walls,index);}
+function roomWall(c,axis,sign,opening,color,index){return art.wall(world,c,axis,sign,opening,walls,index,mineLayout.roomIdentity[index]);}
 function makeMine(index){
  clearWorld();zone='mine';mine=index;stage='search';mineLayout=makeMineLayout(index);
  scene.background=new T.Color(0x07090a);scene.fog=new T.FogExp2(0x11171b,.010);
@@ -49,12 +50,13 @@ function makeMine(index){
    const opening=links.some(([a,b])=>(a===i&&b===neighbor)||(b===i&&a===neighbor));
    roomWall(c,axis,sign,opening,color,i);
   }
-  walls.push(art.room(world,c,i));
+  walls.push(art.room(world,c,i,mineLayout.roomIdentity[i]));
  }
  for(const [a,b]of links)makeTunnel(rooms[a],rooms[b],color);
  art.batchEnvironment(world);
+ art.roomEffects(world,rooms,mineLayout.roomIdentity);
  // Moving assemblies are created after the static environment is batched.
- links.forEach(([a,b],i)=>{if(i%2===0||a===mineLayout.coreRoom||b===mineLayout.coreRoom)makeDoor(a,b);});
+ links.forEach(([a,b],i)=>{const security=mineLayout.reactorGate.includes(a)&&mineLayout.reactorGate.includes(b);if(security||i%2===0||a===mineLayout.coreRoom||b===mineLayout.coreRoom)makeDoor(a,b,security);});
  const coreRoom=mineLayout.coreRoom,built=art.reactor(world,rooms[coreRoom].clone().add(V(0,1,0)));
  reactor={mesh:built.group,core:built.core,shield:built.shield,hp:420+index*200,maxHp:420+index*200,room:coreRoom,active:false};
  reactor.shield.material.opacity=.2;
@@ -81,15 +83,16 @@ function makeMine(index){
    spawnPickup(rooms[r].clone().add(V(-5+i*5,-3,-5)),'cannonAmmo',w.pack,w.id);
  }
  for(const [i,r]of mineLayout.resupplyRooms.entries()){
-  spawnPickup(rooms[r].clone().add(V(-6,2,5)),'shield',35);
   spawnPickup(rooms[r].clone().add(V(6,2,5)),i%2?'cache':'missile',i%2?35:4);
  }
+ for(const r of mineLayout.shieldRooms)spawnPickup(rooms[r].clone().add(V(-6,2,5)),'shield',35);
+ spawnPickup(rooms[mineLayout.keyRoom].clone().add(V(-5,2,-4)),'reactorKey',1);
  player.pos.set(0,0,9);player.q.identity();player.vel.set(0,0,0);player.lastHit=time-8;
  killCount=0;visitedRooms.add(0);world.updateMatrixWorld(true);art.updateLighting(player.pos);
  audio.music('mine');$('sector').textContent=String(index+1).padStart(2,'0')+' / '+names[index];
- toast('Find the reactor deep inside the mine. Bulkhead doors open as you approach.',5);updateObjectives();
+ toast('Find the reactor access key in the outer workings. Watch for the amber security bulkhead.',6);updateObjectives();
 }
-function makeDoor(a,b){
+function makeDoor(a,b,security=false){
  const center=rooms[a].clone().add(rooms[b]).multiplyScalar(.5),delta=rooms[b].clone().sub(rooms[a]);
  const axis=delta.x?0:delta.y?1:2,root=new T.Group();root.position.copy(center);
  root.quaternion.setFromUnitVectors(V(0,0,1),delta.normalize());world.add(root);
@@ -102,12 +105,20 @@ function makeDoor(a,b){
    for(const y of [-5,0,5])art.box(panel,[0,y,face*.82],[7.6,.35,.24],edgemat);
    art.box(panel,[-side*3.7,0,face*.85],[.14,11,.06],art.emissive(0xffa760,1.6));
    for(const y of [-6,6])for(const x of [-2,0,2]){const stripe=art.box(panel,[x,y,face*.9],[.55,1.1,.05],art.materials.yellow);stripe.rotation.z=.6;}
+   if(security){const plaque=new T.Group();plaque.position.z=face*1.02;if(face<0)plaque.rotation.y=Math.PI;panel.add(plaque);art.label(plaque,'REACTOR ACCESS',[0,3.2,0],7.2,1.35,'KEYED BULKHEAD');}
   }
   const bounds=new T.Box3();slab.userData.rayBounds=bounds;panels.push({mesh:panel,slab,side,box:bounds});walls.push(slab);
  }
  for(const x of [-8.8,8.8])art.box(root,[x,0,0],[.5,17.8,2.2],edgemat);
  for(const y of [-8.8,8.8])art.box(root,[0,y,0],[18,.5,2.2],edgemat);
- const door={root,center,axis,panels,open:0,hold:0,opening:false};doors.push(door);positionDoor(door);
+ const indicators=[];
+ if(security){
+  for(const face of [-1,1]){
+   const sign=new T.Group();sign.position.z=face*1.2;if(face<0)sign.rotation.y=Math.PI;root.add(sign);
+   for(const x of [-8.3,8.3])indicators.push(art.box(sign,[x,0,0],[.3,15,.12],art.emissive(0xffae4c,2.5)));
+  }
+ }
+ const door={root,center,axis,panels,security,locked:security,a,b,indicators,open:0,hold:0,opening:false,wasNear:false,lockCooldown:0};doors.push(door);positionDoor(door);
 }
 function positionDoor(door){
  for(const panel of door.panels)panel.mesh.position.x=panel.side*(4.2+door.open*8.6);
@@ -116,15 +127,26 @@ function positionDoor(door){
 }
 function updateDoors(dt){
  for(const door of doors){
+  door.lockCooldown=Math.max(0,door.lockCooldown-dt);
   const delta=player.pos.clone().sub(door.center),cross=[0,1,2].filter(a=>a!==door.axis);
   const near=Math.abs(delta.getComponent(door.axis))<27&&cross.every(a=>Math.abs(delta.getComponent(a))<11);
+  const approaching=near&&!door.wasNear;door.wasNear=near;
+  if(door.security){
+   if(near&&!gateSeen){gateSeen=true;toast(hasReactorKey?'Reactor access authorized. Bulkhead opening.':'Reactor wing sealed. Find its access key in the outer workings.',4);updateObjectives();}
+   if(door.locked&&hasReactorKey){door.locked=false;for(const indicator of door.indicators)indicator.material=art.emissive(0x9bcba9,2.2);}
+   if(door.locked){if(approaching)lockedDoorFeedback(door);door.hold=0;door.opening=false;continue;}
+  }
   const occupied=door.open>0&&enemies.some(e=>{const d=e.mesh.position.clone().sub(door.center);return Math.abs(d.getComponent(door.axis))<7+e.r&&cross.every(a=>Math.abs(d.getComponent(a))<9+e.r);});
-  door.hold=near||occupied?1.25:Math.max(0,door.hold-dt);
+  door.hold=Math.max(near||occupied?1.25:0,door.hold-dt);
   const opening=door.hold>0;
   if(opening!==door.opening&&door.center.distanceTo(player.pos)<55)audio.sfx('door',pan(door.center),.65);
   door.opening=opening;const next=clamp(door.open+(opening?3:-1.5)*dt,0,1);
   if(next!==door.open){door.open=next;positionDoor(door);}
  }
+}
+function lockedDoorFeedback(door){
+ if(door.lockCooldown>0)return;
+ door.lockCooldown=.9;audio.sfx('doorLocked',pan(door.center),.9/(1+door.center.distanceToSquared(player.pos)/3600));
 }
 function makeGenerator(pos){
  const root=new T.Group();root.position.copy(pos);world.add(root);
@@ -147,12 +169,14 @@ function updateReactorShield(){
 }
 function updateExploration(){
  const entered=rooms.findIndex(r=>Math.abs(r.x-player.pos.x)<16&&Math.abs(r.y-player.pos.y)<16&&Math.abs(r.z-player.pos.z)<16);
- if(entered>=0&&!visitedRooms.has(entered)){
-  visitedRooms.add(entered);
-  if(entered===reactor?.room){coreFound=true;if(!reactor.active)stage='containment';toast('Reactor chamber. Destroy the shield relays and its guardians.',5);}
+ if(entered>=0&&(entered!==currentRoom||!visitedRooms.has(entered))){
+  currentRoom=entered;visitedRooms.add(entered);
+  if(entered===reactor?.room&&!coreFound){coreFound=true;if(!reactor.active)stage='containment';toast('Reactor chamber. Destroy the shield relays and its guardians.',5);}
+  else if(mineLayout.reactorWing.includes(entered)&&!wingEntered){wingEntered=true;stage='wing';toast('Reactor wing. Listen for the deep machinery hum: it grows stronger along the route to the core.',6);}
   updateObjectives();
  }
 }
+function reactorProximity(){return zone==='mine'&&reactor&&hasReactorKey?reactorSignal(mineLayout,player.pos.toArray()):0;}
 function makeTunnel(a,b,color){const delta=b.clone().sub(a),axis=delta.x?0:delta.y?1:2,c=a.clone().add(b).multiplyScalar(.5),other=[0,1,2].filter(i=>i!==axis);for(const cross of other)for(const sign of [-1,1]){const p=c.clone(),s=V(18,18,18);p.setComponent(cross,p.getComponent(cross)+sign*9);s.setComponent(axis,15);s.setComponent(cross,.65);walls.push(art.box(world,p.toArray(),s.toArray(),wallmat));}const supports=art.tunnel(world,a,b);walls.push(supports);}
 function pointInside(p){
  if(rooms.some(c=>Math.abs(p.x-c.x)<16&&Math.abs(p.y-c.y)<16&&Math.abs(p.z-c.z)<16))return true;
@@ -192,7 +216,7 @@ function steerPlayer(dt){
 }
 function movePlayer(dt){updateDoors(dt);steerPlayer(dt);const braking=mouse.left&&mouse.right;const local=V((keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0),(keys.has('KeyR')||keys.has('ArrowUp')?1:0)-(keys.has('KeyF')||keys.has('ArrowDown')?1:0),(mouse.right||keys.has('KeyS')?1:0)-(mouse.left||keys.has('KeyW')?1:0));if(braking)local.set(0,0,0);if(local.length()>1)local.normalize();const boost=(keys.has('ShiftLeft')||keys.has('ShiftRight'))&&player.boost>1&&local.length()>0;const speed=(zone==='space'?74:21)*(boost?2.1:1)*(1+upgrades.engine*.12);const desired=local.applyQuaternion(player.q).multiplyScalar(speed);const response=braking?24:desired.lengthSq()===0?14:player.vel.dot(desired)<0?16:8;player.vel.lerp(desired,1-Math.exp(-dt*response));if(desired.lengthSq()===0&&player.vel.lengthSq()<.0025)player.vel.set(0,0,0);player.boost=clamp(player.boost+(boost?-29:18+upgrades.engine*7)*dt,0,100);const steps=Math.ceil(player.vel.length()*dt/.8)||1;for(let i=0;i<steps;i++){for(let axis=0;axis<3;axis++){const p=player.pos.clone();p.setComponent(axis,p.getComponent(axis)+player.vel.getComponent(axis)*dt/steps);if(allowed(p))player.pos.copy(p);else{if(Math.abs(player.vel.getComponent(axis))>12){shake=Math.max(shake,.08);if(time-player.lastHit>1.5)damage(2,'collision');}player.vel.setComponent(axis,0);}}}
 const roll=((keys.has('KeyQ')?1:0)-(keys.has('KeyE')?1:0))*dt*1.5;if(roll)player.q.multiply(new T.Quaternion().setFromAxisAngle(V(0,0,1),roll)).normalize();
-if(zone==='mine'){updateExploration();art.updateLighting(player.pos);}audio.update({speed:player.vel.length()/(zone==='space'?150:45),boost,combat:enemies.some(e=>e.mesh.position.distanceTo(player.pos)<60)?1:0,danger:player.hull<30?.7:0,space:zone==='space'},dt);}
+if(zone==='mine'){updateExploration();art.updateLighting(player.pos);}audio.update({speed:player.vel.length()/(zone==='space'?150:45),boost,combat:enemies.some(e=>e.mesh.position.distanceTo(player.pos)<60)?1:0,danger:player.hull<30?.7:0,space:zone==='space',reactor:reactorProximity()},dt);}
 function spawnEnemy(pos,type,room,id){
  const evader=type==='evader',model=createRobot(T,evader?'drone':type,art.materials),g=model.group;
  g.position.copy(pos);world.add(g);const scale=evader?.64:1;g.scale.setScalar(scale);
@@ -292,10 +316,11 @@ function segmentDistance(p,a,b){const ab=b.clone().sub(a),t=clamp(p.clone().sub(
 function explosion(pos,color=0xff8b43,scale=1){art.burst(world,pos,scale,color);for(let i=0;i<Math.floor(20*scale);i++){const velocity=V(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize().multiplyScalar((5+Math.random()*15)*scale);const m=mesh(geometries.bolt,glow(i%3===0?0xffffd1:color),pos,V(.13,.13,.13).multiplyScalar(scale));particles.push({mesh:m,vel:velocity,life:.3+Math.random()*.7,max:1,scale});}if(particles.length>450){for(const p of particles.splice(0,particles.length-450)){world.remove(p.mesh);p.mesh.material.dispose();}}flashLight.position.copy(pos);flashLight.color.setHex(color);flashLight.intensity=Math.max(flashLight.intensity,160*scale);}
 function dropEnemySupplies(e){
  const low=player.shield<=maxShield()*.25;
- const chance=e.type==='warden'?1:Math.max(e.type==='heavy'?.75:.5,low?.85:0);
- if(Math.random()<chance)spawnPickup(e.mesh.position.clone(),'shield',e.type==='warden'?60:e.type==='heavy'?35:25);
+ const chance=e.type==='warden'?1:Math.max(e.type==='heavy'?.4:.24,low?.45:0);
+ const shieldRoll=Math.random(),missileRoll=Math.random(),missiles=missileRoll<.12?(Math.random()<.5?2:4):0;
+ if(shieldRoll<chance)spawnPickup(e.mesh.position.clone(),'shield',e.type==='warden'?60:e.type==='heavy'?35:25);
  // Missile salvage remains an independent reward; shield drops do not replace it.
- if(Math.random()<.12)spawnPickup(e.mesh.position.clone(),'missile',Math.random()<.5?2:4);
+ if(missiles)spawnPickup(e.mesh.position.clone(),'missile',missiles);
 }
 function enemyHit(e,amount){e.hp-=amount;e.flash=.11;e.body.material.emissive.setHex(0xffdbb5);hitTime=.12;if(e.hp<=0&&enemies.includes(e)){world.remove(e.mesh);disposeGroup(e.mesh);enemies.splice(enemies.indexOf(e),1);explosion(e.mesh.position,0xff7651,e.type==='warden'?2.3:1.2);audio.sfx(e.type==='warden'?'wardenDeath':'robotDeath',pan(e.mesh.position),1/(1+e.mesh.position.distanceToSquared(player.pos)/2500));combo=comboTime>0?combo+1:1;comboTime=4;score+=(e.type==='warden'?1000:e.type==='heavy'?220:100)*Math.min(combo,4);salvage+=e.type==='warden'?50:10;killCount++;dropEnemySupplies(e);if(e.type==='warden')toast('Warden destroyed.');updateReactorShield();}}
 function pan(pos){return clamp(pos.clone().sub(player.pos).normalize().dot(V(1,0,0).applyQuaternion(player.q)),-1,1);}
@@ -307,6 +332,13 @@ function sphereEntry(origin,dir,maxDistance,center,radius){
  const distance=projection-Math.sqrt(discriminant);
  return distance>=0&&distance<=maxDistance?distance:Infinity;
 }
+// Projectile impact requests the same sliding motion as the proximity sensor.
+function shootDoor(object){
+ const door=doors.find(d=>d.panels.some(p=>p.slab===object));if(!door)return;
+ if(door.locked&&!hasReactorKey){lockedDoorFeedback(door);if(toastTime<=0)toast('Security bulkhead locked. Recover the reactor access key.',3);return;}
+ door.hold=Math.max(door.hold,3.5);
+ if(!door.opening){audio.sfx('door',pan(door.center),.65);door.opening=true;}
+}
 function updateShots(dt){
  for(let i=shots.length-1;i>=0;i--){
   if(mode!=='play')break;const s=shots[i];s.life-=dt;
@@ -314,7 +346,7 @@ function updateShots(dt){
   const old=s.mesh.position.clone(),travel=s.speed*dt;let distance=travel,hit=null;
   if(s.life>0){
    raycaster.set(old,s.dir);raycaster.far=travel;const obstruction=intersectWalls()[0];
-   if(obstruction){distance=obstruction.distance;hit={type:'wall'};}
+   if(obstruction){distance=obstruction.distance;hit={type:'wall',object:obstruction.object};}
    const consider=(center,radius,type,object)=>{const d=sphereEntry(old,s.dir,travel,center,radius);if(d<distance){distance=d;hit={type,object};}};
    if(s.enemy){consider(player.pos,1.55,'player');if(reactor)consider(reactor.mesh.position,5.8,'wall');for(const g of generators)if(g.hp>0)consider(g.pos,g.r,'wall');}
    else{
@@ -324,6 +356,7 @@ function updateShots(dt){
    }
   }
   const end=old.clone().addScaledVector(s.dir,distance);
+  if(hit?.type==='wall'&&!s.enemy)shootDoor(hit.object);
   if(hit?.type==='player')damage(s.damage,'enemy');
   else if(hit?.type==='enemy')enemyHit(hit.object,s.damage);
   else if(hit?.type==='generator')hitGenerator(hit.object,s.damage);
@@ -359,7 +392,10 @@ function updatePickups(dt){
  for(let i=pickups.length-1;i>=0;i--){
   const p=pickups[i];p.mesh.rotation.y+=dt;p.mesh.position.y=p.baseY+Math.sin(time*2)*.45;
   if(p.mesh.position.distanceTo(player.pos)>=4)continue;
-  if(p.type==='cannon'||p.type==='cannonAmmo'){
+  if(p.type==='reactorKey'){
+   hasReactorKey=true;updateDoors(0);updateObjectives();
+   toast(gateSeen?'Reactor key recovered. Return to '+mineLayout.roomIdentity[mineLayout.reactorGate[0]].name+'.':'Reactor key recovered. Find the amber security bulkhead.',6);
+  }else if(p.type==='cannon'||p.type==='cannonAmmo'){
    const w=cannonById(p.weapon);if(!w)continue;
    const fresh=p.type==='cannon'&&!arsenal.owned.includes(w.id);
    if(!fresh&&arsenal.ammo[w.id]>=w.capacity)continue;
@@ -370,7 +406,7 @@ function updatePickups(dt){
   }else if(p.type==='shield'){if(player.shield>=maxShield())continue;const gained=Math.min(p.value,maxShield()-player.shield);player.shield+=gained;toast('Shield cell +'+gained,1.8);}
   else if(p.type==='missile'){player.missiles=Math.min(24,player.missiles+Math.min(p.value,4));toast('Missile resupply',1.8);}
   else{salvage+=p.value;score+=p.value*5;player.hull=Math.min(100,player.hull+15);toast('Hidden cache: +'+p.value+' salvage. Hull repaired.',3);}
-  audio.sfx(p.type==='cannon'?'equip':'pickup');world.remove(p.mesh);disposeGroup(p.mesh);pickups.splice(i,1);
+  audio.sfx(p.type==='reactorKey'?'unlock':p.type==='cannon'?'equip':'pickup');world.remove(p.mesh);disposeGroup(p.mesh);pickups.splice(i,1);
  }
 }
 function maxShield(){return 100+upgrades.shield*45;}
@@ -413,14 +449,22 @@ function objectiveTarget(){
  return destination?{pos:destination.pos,label:nextMine<3?names[nextMine]:'JUMP GATE'}:null;
 }
 function updateObjectives(){
+ $('chamberLabel').hidden=zone!=='mine';$('keyStatus').hidden=zone!=='mine';
+ if(zone==='mine'&&mineLayout){
+  const room=mineLayout.roomIdentity[currentRoom];$('chamberLabel').textContent=room.code+' / '+room.name.toUpperCase();
+  $('keyStatus').textContent=hasReactorKey?'REACTOR ACCESS KEY · ACQUIRED':'REACTOR ACCESS KEY · MISSING';
+  $('keyStatus').style.color=hasReactorKey?'#aacdb1':'#c6a977';
+ }
  $('target').hidden=zone!=='space';$('upgradeBtn').hidden=zone!=='space'||pendingUpgrades<=0;
  $('upgradeBtn').textContent='U · UPGRADE'+(pendingUpgrades>1?' ×'+pendingUpgrades:'');
  if(zone==='space'){
   $('phase').textContent=nextMine<3?'INTERSECTOR FLIGHT':'FINAL EXTRACTION';$('objective').textContent=nextMine<3?'Reach '+names[nextMine]:'Reach the jump gate';
   $('detail').textContent='Explore the freighter and anomaly, or fly to the outpost. C enters; U installs a recovered upgrade.';
  }else if(!coreFound){
-  $('phase').textContent='DEEP MINE SURVEY';$('objective').textContent='Find the reactor';
-  $('detail').textContent=visitedRooms.size+' / '+rooms.length+' chambers surveyed. Follow the tunnels and watch for ambushes.';
+  const inWing=mineLayout.reactorWing.includes(currentRoom);
+  $('phase').textContent=inWing?'REACTOR WING':'OUTER WORKINGS';
+  $('objective').textContent=!hasReactorKey?'Find the access key':inWing?'Follow the reactor hum':'Open reactor access';
+  $('detail').textContent=!hasReactorKey?'Search the outer workings for a key to the amber bulkhead.':inWing?'The deep machinery hum grows stronger along the route to the core.':gateSeen?'Return to '+mineLayout.roomIdentity[mineLayout.reactorGate[0]].name+' and enter the security bulkhead.':'Find the amber security bulkhead. Your key opens the reactor wing.';
  }else if(!reactor.active){
   $('phase').textContent='REACTOR CONTAINMENT';$('objective').textContent='Break its defenses';
   $('detail').textContent=generators.filter(g=>g.hp>0).length+' shield relays · '+enemies.filter(e=>e.guardian).length+' chamber guardians remaining';
@@ -440,19 +484,21 @@ function updateHUD(dt){
  if(target){const to=target.pos.clone().sub(player.pos),local=to.clone().applyQuaternion(player.q.clone().invert()),behind=local.z>0,depth=Math.max(Math.abs(local.z),.05),tan=Math.tan(camera.fov*Math.PI/360);let x=local.x/(depth*tan*camera.aspect),y=local.y/(depth*tan);if(behind&&Math.abs(x)<.2)x=.85;x=clamp(x,-.84,.84);y=clamp(y,-.68,.66);$('target').style.left=(50+x*50)+'%';$('target').style.top=(50-y*50)+'%';$('targetLabel').textContent=behind?'TURN · '+target.label:target.label;$('targetDistance').textContent=Math.round(to.length())+' m';}
  let prompt='';if(zone==='space'){let best=Infinity;for(const o of spaceObjects){const d=o.pos.distanceTo(player.pos);if(o.type==='destination'&&d<88&&d<best){prompt=nextMine<3?'[C] ENTER MINE':'[C] ENGAGE JUMP DRIVE';best=d;}else if(o.type==='wreck'&&!o.used&&d<65&&d<best){prompt='[C] SALVAGE DERELICT FREIGHTER';best=d;}else if(o.type==='anomaly'&&!o.used&&d<60&&d<best){prompt='[C] HARVEST THE ANOMALY';best=d;}}
 if(!prompt){const wreck=spaceObjects.find(o=>o.type==='wreck'&&!o.used),anomaly=spaceObjects.find(o=>o.type==='anomaly'&&!o.used);if(wreck&&player.pos.distanceTo(wreck.pos)<250)prompt='Derelict signal: left of flight path';else if(anomaly&&player.pos.distanceTo(anomaly.pos)<230)prompt='Energy anomaly: right and above';}}
-if(!prompt.startsWith('[C]')){const nearby=pickups.filter(p=>(p.type==='shield'||(!prompt&&p.weapon))&&p.mesh.position.distanceTo(player.pos)<22&&visible(player.pos,p.mesh.position)).sort((a,b)=>a.mesh.position.distanceToSquared(player.pos)-b.mesh.position.distanceToSquared(player.pos))[0];if(nearby){if(nearby.type==='shield')prompt=player.shield>=maxShield()?'SHIELD CELL · SHIELDS FULL':'SHIELD CELL +'+Math.min(nearby.value,maxShield()-player.shield)+' · FLY THROUGH TO COLLECT';else{const w=cannonById(nearby.weapon);prompt=w.name+' · '+(nearby.type==='cannon'?'FLY THROUGH TO RECOVER':arsenal.ammo[w.id]>=w.capacity?'AMMO FULL':'+'+nearby.value+' '+w.ammoName);}}}
+if(!prompt.startsWith('[C]')){const nearby=pickups.filter(p=>(p.type==='reactorKey'||p.type==='shield'||(!prompt&&p.weapon))&&p.mesh.position.distanceTo(player.pos)<22&&visible(player.pos,p.mesh.position)).sort((a,b)=>a.mesh.position.distanceToSquared(player.pos)-b.mesh.position.distanceToSquared(player.pos))[0];if(nearby){if(nearby.type==='reactorKey')prompt='REACTOR ACCESS KEY · FLY THROUGH TO COLLECT';else if(nearby.type==='shield')prompt=player.shield>=maxShield()?'SHIELD CELL · SHIELDS FULL':'SHIELD CELL +'+Math.min(nearby.value,maxShield()-player.shield)+' · FLY THROUGH TO COLLECT';else{const w=cannonById(nearby.weapon);prompt=w.name+' · '+(nearby.type==='cannon'?'FLY THROUGH TO RECOVER':arsenal.ammo[w.id]>=w.capacity?'AMMO FULL':'+'+nearby.value+' '+w.ammoName);}}}
+if(!prompt&&zone==='mine'){const gate=doors.find(d=>d.security);if(gate&&gate.center.distanceTo(player.pos)<28)prompt=hasReactorKey?'REACTOR ACCESS · AUTHORIZED':'REACTOR ACCESS · KEY REQUIRED';}
 $('prompt').textContent=prompt;drawMap();}
 function drawMap(){
  const c=$('mapCanvas').getContext('2d'),w=180,h=150;c.clearRect(0,0,w,h);c.strokeStyle='#51809633';
  for(let i=15;i<w;i+=25){c.beginPath();c.moveTo(i,0);c.lineTo(i,h);c.stroke();}
  if(zone==='mine'){
-  const project=p=>[p.x-p.y*.35,p.z-p.y*.5],known=[...visitedRooms].map(i=>rooms[i]),projected=[...known,player.pos].map(project);
+  const project=p=>[p.x-p.y*.35,p.z-p.y*.5],known=[...visitedRooms].map(i=>rooms[i]),gate=gateSeen?doors.find(d=>d.security):null,projected=[...known,player.pos,...(gate?[gate.center]:[])].map(project);
   const xs=projected.map(p=>p[0]),ys=projected.map(p=>p[1]),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
   const scale=Math.min(140/Math.max(100,maxX-minX),110/Math.max(100,maxY-minY));
   const map=p=>{const [x,y]=project(p);return[90+(x-(minX+maxX)/2)*scale,75+(y-(minY+maxY)/2)*scale];};
   c.strokeStyle='#719497';c.lineWidth=2;
   for(const [a,b]of links)if(visitedRooms.has(a)&&visitedRooms.has(b)){c.beginPath();c.moveTo(...map(rooms[a]));c.lineTo(...map(rooms[b]));c.stroke();}
   for(const i of visitedRooms){const [x,y]=map(rooms[i]);c.fillStyle=i===nearestRoom(player.pos)?'#365b61':'#1a303c';c.fillRect(x-4,y-4,8,8);c.strokeStyle='#81aeb5';c.strokeRect(x-4,y-4,8,8);}
+  if(gate){const [x,y]=map(gate.center);c.strokeStyle=hasReactorKey?'#a4c6ac':'#e2ac60';c.lineWidth=2;c.strokeRect(x-3,y-4,6,8);if(!hasReactorKey){c.beginPath();c.arc(x,y-4,2,Math.PI,0);c.stroke();}}
   for(const e of enemies)if(e.inSight&&visitedRooms.has(e.room)){const [x,y]=map(e.mesh.position);c.fillStyle=e.evader?'#c897ff':'#ff735a';c.fillRect(x-2,y-2,4,4);}
   c.fillStyle='#a6ffee';c.beginPath();c.arc(...map(player.pos),3,0,7);c.fill();
  }else{
@@ -502,4 +548,4 @@ function update(dt){time+=dt;art.update(time,dt);flashLight.intensity*=Math.exp(
 function menuScene(){makeMine(0);mode='menu';$('hud').hidden=true;$('toast').style.opacity=0;camera.position.set(0,2,12);camera.lookAt(-6,0,-14);if(enemies[0]){enemies[0].pos.set(5,0,-6);enemies[0].mesh.position.copy(enemies[0].pos);enemies[0].mesh.lookAt(camera.position);enemies[0].mesh.scale.setScalar(1.2);}cockpit.visible=false;}
 let last=performance.now();function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.035);last=now;if(mode==='play')update(dt);else if(mode==='menu'){time+=dt;art.update(time,dt);camera.position.x=Math.sin(time*.1)*.4;camera.lookAt(-6,0,-14);for(const e of enemies){e.model.animate?.(time,dt,0,0);}}cinema.render(scene,camera,time);}menuScene();requestAnimationFrame(frame);
 // Read-only diagnostics for support and automated mechanical checks.
-window.minedescent={snapshot:()=>({mode,zone,mine,nextMine,stage,enemies:enemies.length,hull:player.hull,shield:player.shield,score,salvage,rooms:rooms.length,surveyed:visitedRooms.size,pendingUpgrades,upgrades:{...upgrades},arsenal:cleanArsenal(arsenal),position:player.pos.toArray(),renderer:renderer.info.render}),version:'3.1.2'};
+window.minedescent={snapshot:()=>({mode,zone,mine,nextMine,stage,enemies:enemies.length,hull:player.hull,shield:player.shield,score,salvage,rooms:rooms.length,surveyed:visitedRooms.size,room:mineLayout?.roomIdentity[currentRoom]?.name,hasReactorKey,gateSeen,wingEntered,pendingUpgrades,upgrades:{...upgrades},arsenal:cleanArsenal(arsenal),position:player.pos.toArray(),renderer:renderer.info.render}),version:'3.2.1'};

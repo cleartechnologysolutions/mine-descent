@@ -1,8 +1,6 @@
 import fs from 'node:fs';
-import {fileURLToPath,pathToFileURL} from 'node:url';
-import {resolve} from 'node:path';
 import assert from 'node:assert/strict';
-const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
+const root=new URL('..',import.meta.url).pathname.replace(/\/$/,'');
 const windowEvents=new Map(),documentEvents=new Map();
 const register=(registry,n,f)=>{if(!registry.has(n))registry.set(n,[]);registry.get(n).push(f);};
 function dispatch(registry,n,values={}){const event={repeat:false,ctrlKey:false,metaKey:false,altKey:false,prevented:false,preventDefault(){this.prevented=true;},target:document.getElementById('game'),...values};for(const fn of registry.get(n)||[])fn(event);return event;}
@@ -10,11 +8,11 @@ let pointerLockRequests=0;
 class Element{constructor(id){this.id=id;this.hidden=false;this.style={};this.value=id==='difficulty'?'normal':id==='sensitivity'?'80':'65';this.children=[];this.checked=false;this.events={};}addEventListener(n,f){this.events[n]=f;}focus(){document.activeElement=this;}getContext(){return new Proxy({},{get:()=>()=>{}});}replaceChildren(){this.children=[];}append(e){this.children.push(e);}requestPointerLock(){pointerLockRequests++;throw new Error('Mouse capture must never be requested');}}
 const elements=new Map();globalThis.document={getElementById(id){if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);},createElement:()=>new Element('new'),addEventListener(n,f){register(documentEvents,n,f);},pointerLockElement:null,exitPointerLock(){this.pointerLockElement=null;}};
 globalThis.window=globalThis;globalThis.addEventListener=(n,f)=>register(windowEvents,n,f);globalThis.innerWidth=1440;globalThis.innerHeight=900;globalThis.devicePixelRatio=1;globalThis.requestAnimationFrame=()=>{};const storage=new Map();globalThis.localStorage={getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
-globalThis.VoidAudio=class{start(){return Promise.resolve(true);}update(){}setVolume(){}setMuted(){}pause(){}sfx(){}music(){}};
+globalThis.VoidAudio=class{start(){return Promise.resolve(true);}update(state){this.lastState={...this.lastState,...state};}setVolume(){}setMuted(){}pause(){}sounds=[];sfx(name,pan,volume){this.sounds.push({name,pan,volume});}music(){}};
 globalThis.MockRenderer=class{shadowMap={};capabilities={getMaxAnisotropy:()=>1};info={render:{}};setSize(){}setPixelRatio(){}render(scene){scene.updateMatrixWorld(true);}};
-let source=fs.readFileSync(root+'/src/game.js','utf8').replace("'/three.module.min.js'",JSON.stringify(pathToFileURL(root+'/src/vendor/three.module.js').href)).replace("'/art.js'",JSON.stringify(pathToFileURL(root+'/src/art.js').href)).replace("'/robots.js'",JSON.stringify(pathToFileURL(root+'/src/robots.js').href)).replace("'/layouts.js'",JSON.stringify(pathToFileURL(root+'/src/layouts.js').href)).replace("'/weapons.js'",JSON.stringify(pathToFileURL(root+'/src/weapons.js').href)).replace('new T.WebGLRenderer','new globalThis.MockRenderer');
-source+='\nexport {T,scene,player,keys,makeMine,makeSpace,beginNew,restore,refill,allowed,pointInside,pathTo,visible,segmentDistance,movePlayer,updateShots,update,fire,damage,destroyReactor,enemyHit,interactSpace,objectiveTarget,readCheckpoint,saveCheckpoint,pauseGame,resumePlay,maxShield,openUpgrade,closeUpgrade,spawnPickup,createShot,makeMineLayout,updateDoors,positionDoor,updateExploration,hitGenerator,updateReactorShield,updateEnemies,drawMap,drawSteering,sphereEntry,updatePickups,updateHUD,browseCannon,selectCannon,CANNONS,cleanArsenal,updateCannonCooling};\nexport const state=()=>({mode,zone,mine,nextMine,stage,enemies,shots,particles,walls,rooms,links,reactor,doors,generators,visitedRooms,mineLayout,coreFound,pendingUpgrades,score,salvage,upgrades,pickups,spaceObjects,checkpoint,arsenal,browsedCannon,browseUntil,fireWait,overheated,cannonBurst,cannonRecovery});\nexport function configure(values){if(values.mode)mode=values.mode;if(values.nextMine!==undefined)nextMine=values.nextMine;if(values.stage)stage=values.stage;if(values.upgrades)upgrades=values.upgrades;if(values.fireWait!==undefined)fireWait=values.fireWait;if(values.pendingUpgrades!==undefined)pendingUpgrades=values.pendingUpgrades;}\n';
-const testModule=(await import('node:os')).tmpdir()+'/voidbreak-game-under-test-'+process.pid+'.mjs';fs.writeFileSync(testModule,source);const g=await import(pathToFileURL(testModule).href+'?t='+Date.now());const vec=(...a)=>new g.T.Vector3(...a);let count=0;function check(label,fn){fn();count++;console.log('PASS '+label);}
+let source=fs.readFileSync(root+'/src/game.js','utf8').replace("'/three.module.min.js'",JSON.stringify('file://'+root+'/src/vendor/three.module.js')).replace("'/art.js'",JSON.stringify('file://'+root+'/src/art.js')).replace("'/robots.js'",JSON.stringify('file://'+root+'/src/robots.js')).replace("'/layouts.js'",JSON.stringify('file://'+root+'/src/layouts.js')).replace("'/weapons.js'",JSON.stringify('file://'+root+'/src/weapons.js')).replace('new T.WebGLRenderer','new globalThis.MockRenderer');
+source+='\nexport {T,scene,player,keys,makeMine,makeSpace,beginNew,restore,refill,allowed,pointInside,pathTo,visible,segmentDistance,movePlayer,updateShots,update,fire,damage,destroyReactor,enemyHit,interactSpace,objectiveTarget,readCheckpoint,saveCheckpoint,pauseGame,resumePlay,maxShield,openUpgrade,closeUpgrade,spawnPickup,createShot,makeMineLayout,updateDoors,positionDoor,updateExploration,hitGenerator,updateReactorShield,updateEnemies,drawMap,drawSteering,sphereEntry,updatePickups,updateHUD,browseCannon,selectCannon,CANNONS,cleanArsenal,updateCannonCooling,reactorProximity,reactorSignal,dropEnemySupplies,audio,art};\nexport const state=()=>({mode,zone,mine,nextMine,stage,enemies,shots,particles,walls,rooms,links,reactor,doors,generators,visitedRooms,mineLayout,coreFound,hasReactorKey,gateSeen,wingEntered,currentRoom,pendingUpgrades,score,salvage,upgrades,pickups,spaceObjects,checkpoint,arsenal,browsedCannon,browseUntil,fireWait,overheated,cannonBurst,cannonRecovery});\nexport function configure(values){if(values.mode)mode=values.mode;if(values.nextMine!==undefined)nextMine=values.nextMine;if(values.stage)stage=values.stage;if(values.upgrades)upgrades=values.upgrades;if(values.fireWait!==undefined)fireWait=values.fireWait;if(values.pendingUpgrades!==undefined)pendingUpgrades=values.pendingUpgrades;}\n';
+const testModule=(await import('node:os')).tmpdir()+'/voidbreak-game-under-test-'+process.pid+'.mjs';fs.writeFileSync(testModule,source);const g=await import('file://'+testModule+'?t='+Date.now());const vec=(...a)=>new g.T.Vector3(...a);let count=0;function check(label,fn){fn();count++;console.log('PASS '+label);}
 g.beginNew();g.scene.updateMatrixWorld(true);
 check('new campaign initializes playable mine with valid spawn and security',()=>{assert.equal(g.state().mode,'play');assert.equal(g.state().zone,'mine');assert(g.allowed(g.player.pos));assert.equal(g.state().enemies.length,24);});
 for(let level=0;level<3;level++){
@@ -23,6 +21,75 @@ for(let level=0;level<3;level++){
   const {rooms,links,reactor}=g.state();assert.equal(rooms.length,[18,24,30][level]);assert(g.pathTo(0,reactor.room).length>=[10,12,14][level]);assert(links.length>=rooms.length);
   for(let i=0;i<rooms.length;i++)assert.equal(g.pathTo(0,i).at(-1),i);
   for(const [a,b]of links)assert.equal(rooms[a].distanceTo(rooms[b]),50);
+ });
+ check('mine '+level+' has distinct local room identities and a single gated wing',()=>{
+  const {mineLayout:l,rooms,links,pickups,doors}=g.state();
+  assert.equal(l.roomIdentity.length,rooms.length);assert.equal(new Set(l.roomIdentity.map(r=>r.name)).size,rooms.length);
+  for(const [a,b]of links)assert.notEqual(l.roomIdentity[a].theme,l.roomIdentity[b].theme);
+  const gates=doors.filter(d=>d.security);assert.equal(gates.length,1);assert(gates[0].locked);
+  const outer=new Set([0]),queue=[0];for(const i of queue)for(const [a,b]of links){if(l.reactorGate.includes(a)&&l.reactorGate.includes(b))continue;const next=a===i?b:b===i?a:-1;if(next>=0&&!outer.has(next)){outer.add(next);queue.push(next);}}
+  assert(outer.has(l.keyRoom));assert(!outer.has(l.coreRoom));assert.deepEqual(rooms.flatMap((_,i)=>outer.has(i)?[]:[i]),l.reactorWing);
+  assert(l.reactorWing.length>=8);assert.equal(links.filter(([a,b])=>outer.has(a)!==outer.has(b)).length,1);
+  const key=pickups.filter(p=>p.type==='reactorKey');assert.equal(key.length,1);assert(key[0].mesh.position.distanceTo(rooms[l.keyRoom])<10);
+  const cells=pickups.filter(p=>p.type==='shield');assert.equal(cells.length,2);assert(cells.every(p=>p.value===35));
+  for(const r of l.shieldRooms)assert(cells.some(p=>p.mesh.position.distanceTo(rooms[r])<10));
+  assert.equal(l.shieldRooms.filter(r=>outer.has(r)).length,1);
+ });
+ check('mine '+level+' landmarks preserve enemy spawns, pickups, and room crossings',()=>{
+  const {enemies,pickups,rooms,reactor}=g.state();
+  for(const e of enemies)assert(g.allowed(e.mesh.position,e.r),`enemy ${e.type} room ${e.room}`);
+  for(const p of pickups)assert(g.allowed(p.mesh.position),`pickup ${p.type}`);
+  for(const [i,center]of rooms.entries())if(i!==reactor.room)for(const axis of [0,1,2]){
+   const delta=vec().setComponent(axis,14.5);assert(g.visible(center.clone().sub(delta),center.clone().add(delta)),`room ${i} sight axis ${axis}`);
+   for(const offset of [-14.5,-10,-5,0,5,10,14.5])assert(g.allowed(center.clone().setComponent(axis,center.getComponent(axis)+offset)),`room ${i} flight axis ${axis}`);
+  }
+ });
+ check('mine '+level+' room effects animate after batching without obstructing shots',()=>{
+  const systems=g.art.moving;assert.equal(systems.length,g.state().rooms.length);
+  assert.equal(new Set(systems.map(s=>s.theme)).size,10);
+  const ray=new g.T.Raycaster();
+  for(const s of systems){
+   assert(!g.state().walls.includes(s.root));g.art.updateLighting(s.center);assert(s.root.visible);assert(g.art.roomLights.filter(l=>l.visible).length<=4);
+   g.art.updateRoomEffects(.2);const beforeGlow=s.glow.emissiveIntensity,before=Array.from(s.particles.geometry.attributes.position.array);const vertexCount=s.particles.geometry.attributes.position.count;
+   g.art.updateRoomEffects(1.4);assert.notDeepEqual(Array.from(s.particles.geometry.attributes.position.array),before);assert.equal(s.particles.geometry.attributes.position.count,vertexCount);assert.equal(vertexCount,32);
+   assert(s.motions.length>0||s.glow.emissiveIntensity!==beforeGlow);for(const m of s.motions)assert(!m.object.userData.batch);
+   ray.set(s.center.clone().add(vec(0,0,30)),vec(0,0,-1));assert.equal(ray.intersectObject(s.root,true).length,0);
+  }
+  const key=g.state().pickups.find(p=>p.type==='reactorKey'),bounds=new g.T.Box3().setFromObject(key.mesh);assert(bounds.getSize(vec()).y>6);assert.equal(key.mesh.children.filter(o=>o.userData.keyPart==='tooth').length,2);assert(key.mesh.children.some(o=>o.userData.keyPart==='bow'&&o.geometry.type==='TorusGeometry'));assert(key.mesh.children.every(o=>o.material.color.getHex()===0xffc52e));
+  g.art.updateLighting(g.player.pos);
+ });
+ if(level===0)check('locked bulkhead chunks on approach and shooting, with no rapid-fire sound spam',()=>{
+  const door=g.state().doors.find(d=>d.security),normal=g.state().rooms[door.b].clone().sub(g.state().rooms[door.a]).normalize();
+  const chunks=()=>g.audio.sounds.filter(s=>s.name==='doorLocked');const before=chunks().length;
+  g.player.pos.copy(door.center).addScaledVector(normal,-40);g.updateDoors(1);
+  g.player.pos.copy(door.center).addScaledVector(normal,-6);g.updateDoors(.01);assert.equal(chunks().length,before+1);
+  for(let i=0;i<120;i++)g.updateDoors(1/60);assert.equal(chunks().length,before+1,'standing near a lock should not loop the sound');
+  g.createShot(door.center.clone().addScaledVector(normal,-5),normal,'laser');g.updateShots(.1);assert.equal(chunks().length,before+2);
+  for(let i=0;i<3;i++){g.createShot(door.center.clone().addScaledVector(normal,-5),normal,'laser');g.updateShots(.1);g.updateDoors(.1);}assert.equal(chunks().length,before+2);
+  g.player.pos.copy(door.center).addScaledVector(normal,40);g.updateDoors(1);g.player.pos.copy(door.center).addScaledVector(normal,6);g.updateDoors(.01);assert.equal(chunks().length,before+3);
+  assert(door.locked);assert.equal(door.open,0);assert(chunks().every(s=>s.volume>0&&s.volume<=.9&&Math.abs(s.pan)<=1));
+ });
+ check('mine '+level+' security blocks ships and shots until the physical key is recovered',()=>{
+  const {doors,rooms,mineLayout:l}=g.state(),gate=doors.find(d=>d.security),normal=rooms[gate.b].clone().sub(rooms[gate.a]).normalize();
+  assert(!g.allowed(gate.center));assert.equal(g.reactorProximity(),0);
+  for(const side of [-1,1]){g.player.pos.copy(gate.center).addScaledVector(normal,6*side);g.updateDoors(.5);assert.equal(gate.open,0);assert(!g.visible(gate.center.clone().addScaledVector(normal,-6),gate.center.clone().addScaledVector(normal,6)));}
+  g.player.pos.copy(gate.center).addScaledVector(normal,-10);g.player.q.setFromUnitVectors(vec(0,0,-1),normal);g.player.vel.set(0,0,0);g.keys.add('KeyW');g.keys.add('ShiftLeft');
+  for(let i=0;i<60;i++)g.movePlayer(1/120);g.keys.clear();assert(g.player.pos.clone().sub(gate.center).dot(normal)<0);assert(g.allowed(g.player.pos));
+  g.createShot(gate.center.clone().addScaledVector(normal,-5),normal,'laser');g.updateShots(.1);g.updateDoors(.5);assert.equal(g.state().shots.length,0);assert.equal(gate.open,0);assert(gate.locked);
+  const key=g.state().pickups.find(p=>p.type==='reactorKey');g.player.pos.copy(key.mesh.position);g.updatePickups(0);assert(g.state().hasReactorKey);assert(!g.state().pickups.includes(key));assert(!gate.locked);assert(!g.state().coreFound);assert.equal(g.objectiveTarget(),null);
+  g.player.pos.copy(gate.center).addScaledVector(normal,-6);g.updateDoors(.5);assert.equal(gate.open,1);assert(g.allowed(gate.center));assert(g.visible(gate.center.clone().addScaledVector(normal,-6),gate.center.clone().addScaledVector(normal,6)));
+  g.player.pos.copy(gate.center).addScaledVector(normal,-10);g.player.vel.set(0,0,0);g.keys.add('KeyW');g.keys.add('ShiftLeft');
+  for(let i=0;i<90;i++){g.movePlayer(1/120);assert(g.allowed(g.player.pos));}g.keys.clear();assert(g.player.pos.clone().sub(gate.center).dot(normal)>0);assert(g.state().wingEntered);assert(!g.state().coreFound);
+  g.player.pos.copy(rooms[l.reactorGate[0]]);g.updateExploration();assert.equal(document.getElementById('chamberLabel').textContent,l.roomIdentity[l.reactorGate[0]].code+' / '+l.roomIdentity[l.reactorGate[0]].name.toUpperCase());
+ });
+ check('mine '+level+' reactor hum follows passages and grows smoothly toward the core',()=>{
+  const l=g.state().mineLayout;let prior=0;
+  for(let i=0;i<=l.coreRoom;i++){const strength=g.reactorSignal(l,l.coords[i]);assert(Number.isFinite(strength)&&strength>=prior&&strength<=1);prior=strength;}
+  for(let i=l.reactorGate[1];i<l.coreRoom;i++)for(const t of [.32,.5,.68]){
+   const sample=k=>g.reactorSignal(l,l.coords[i].map((n,j)=>n+(l.coords[i+1][j]-n)*k));
+   assert(Math.abs(sample(t-.0001)-sample(t+.0001))<.002,`hum seam ${i} at ${t}`);
+  }
+  if(level===1){assert.equal(vec(...l.coords[7]).distanceTo(vec(...l.coords[l.coreRoom])),vec(...l.coords[16]).distanceTo(vec(...l.coords[l.coreRoom])));assert(g.reactorSignal(l,l.coords[7])>g.reactorSignal(l,l.coords[16]));}
  });
  check('mine '+level+' all open doorways and connecting tunnels fit the ship',()=>{
   for(const door of g.state().doors){door.open=1;g.positionDoor(door);}
@@ -35,6 +102,16 @@ for(let level=0;level<3;level++){
 g.makeMine(0);g.configure({mode:'play'});g.player.pos.copy(g.state().rooms[2]);g.player.q.identity();g.update(.016);
 check('mine navigation has no reactor, enemy, or next-room waypoint',()=>{assert.equal(g.objectiveTarget(),null);assert.equal(document.getElementById('target').hidden,true);});
 g.makeMine(0);g.configure({mode:'play'});g.refill();g.scene.updateMatrixWorld(true);
+check('shooting a normal closed door opens it, holds it, and permits travel on either face',()=>{
+ const gate=g.state().doors.find(d=>!d.security),normal=g.state().rooms[gate.b].clone().sub(g.state().rooms[gate.a]).normalize();
+ for(const side of [-1,1]){
+  gate.open=0;gate.hold=0;gate.opening=false;g.positionDoor(gate);g.player.pos.copy(gate.center).add(vec(80,80,80));
+  const origin=gate.center.clone().addScaledVector(normal,6*side),direction=normal.clone().multiplyScalar(-side);
+  g.createShot(origin,direction,'laser');g.updateShots(.12);assert.equal(g.state().shots.length,0,'impact consumes projectile');assert(gate.hold>=3.5);assert.equal(gate.open,0,'impact starts motor rather than removing panel');
+  g.updateDoors(.4);assert.equal(gate.open,1);assert(g.allowed(gate.center));g.updateDoors(1);assert.equal(gate.open,1);g.updateDoors(3);assert.equal(gate.open,0);
+ }
+ g.player.pos.set(0,0,0);g.player.vel.set(0,0,0);
+});
 check('boost movement cannot cross solid walls',()=>{g.player.pos.set(0,0,0);g.keys.add('KeyD');g.keys.add('ShiftLeft');for(let i=0;i<150;i++)g.movePlayer(1/60);g.keys.clear();assert(g.player.pos.x<17);assert(g.allowed(g.player.pos));});
 check('roll makes strafe follow ship-local axes',()=>{g.player.pos.set(0,0,0);g.player.vel.set(0,0,0);g.player.q.setFromAxisAngle(vec(0,0,1),Math.PI/2);g.keys.add('KeyD');for(let i=0;i<20;i++)g.movePlayer(1/60);g.keys.clear();assert(g.player.pos.y>2);assert(Math.abs(g.player.pos.x)<.01);});
 check('muzzle stays on player side of close wall',()=>{g.player.q.setFromAxisAngle(vec(0,1,0),-Math.PI/2);g.player.pos.set(14.8,0,0);g.configure({fireWait:0});g.fire();assert(g.state().shots.at(-1).mesh.position.x<17.63);});
@@ -74,7 +151,7 @@ g.scene.updateMatrixWorld(true);
 check('space asteroids block laser sight lines',()=>{const rock=g.state().spaceObjects.find(o=>o.type==='rock');assert.equal(g.visible(rock.pos.clone().add(vec(0,0,100)),rock.pos.clone().add(vec(0,0,-100))),false);});
 check('space discovery grants salvage once and spawns ambush',()=>{const wreck=g.state().spaceObjects.find(o=>o.type==='wreck');g.player.pos.copy(wreck.pos).add(vec(0,0,60));const salvage=g.state().salvage,n=g.state().enemies.length;g.interactSpace();assert.equal(g.state().salvage,salvage+100);assert.equal(g.state().enemies.length,n+2);g.interactSpace();assert.equal(g.state().salvage,salvage+100);});
 check('destination interaction enters next mine and rearms',()=>{const dest=g.state().spaceObjects.find(o=>o.type==='destination');g.player.pos.copy(dest.pos).add(vec(0,0,60));g.interactSpace();assert.equal(g.state().mine,1);assert.equal(g.state().zone,'mine');assert.equal(g.state().stage,'search');assert.equal(g.player.hull,100);});
-check('checkpoint restore resets complete encounter',()=>{const s=g.state().checkpoint,n=g.state().enemies.length;g.enemyHit(g.state().enemies[0],10000);g.player.hull=8;g.restore(s);assert.equal(g.state().enemies.length,n);assert.equal(g.player.hull,100);assert.equal(g.state().mode,'play');});
+check('checkpoint restore resets complete encounter',()=>{const s=g.state().checkpoint,n=g.state().enemies.length;g.enemyHit(g.state().enemies[0],10000);g.player.hull=8;g.restore(s);assert(!g.state().hasReactorKey);assert(g.state().doors.find(d=>d.security).locked);assert.equal(g.state().pickups.filter(p=>p.type==='reactorKey').length,1);assert.equal(g.state().enemies.length,n);assert.equal(g.player.hull,100);assert.equal(g.state().mode,'play');});
 check('pause clears held flight and fire controls',()=>{g.keys.add('KeyW');g.pauseGame();assert.equal(g.state().mode,'pause');assert.equal(g.keys.size,0);g.resumePlay();assert.equal(g.state().mode,'play');});
 check('final jump gate reaches victory',()=>{g.configure({nextMine:3,mode:'play'});g.makeSpace();g.player.pos.copy(g.state().spaceObjects.find(o=>o.type==='destination').pos).add(vec(0,0,60));g.interactSpace();assert.equal(g.state().mode,'end');assert.equal(document.getElementById('endLabel').textContent,'MISSION COMPLETE');assert.equal(g.readCheckpoint(),null);});
 // Exercise real input event handlers as well as the flight/combat simulation.
@@ -189,7 +266,7 @@ check('mouseup outside the canvas releases thrust and right click suppresses its
 g.makeMine(0);g.configure({mode:'play'});g.refill();g.scene.updateMatrixWorld(true);
 for(const axis of [0,1,2]){
  check('automatic bulkhead on axis '+axis+' opens from either side and closes safely',()=>{
-  const door=g.state().doors.find(d=>d.axis===axis);assert(door);
+  const door=g.state().doors.find(d=>d.axis===axis&&!d.security);assert(door);
   const normal=vec(0,0,1).applyQuaternion(door.root.quaternion),cross=vec(1,0,0).applyQuaternion(door.root.quaternion);
   g.player.pos.set(1000,1000,1000);g.updateDoors(4);assert.equal(door.open,0);assert(!g.allowed(door.center));
   assert(!g.visible(door.center.clone().addScaledVector(normal,6),door.center.clone().addScaledVector(normal,-6)));
@@ -362,5 +439,24 @@ check('a brief burst stays automatic and release cools it without a forced recov
  g.beginNew();resetFlight();g.state().enemies.splice(0);dispatch(windowEvents,'keydown',{code:'Space'});for(let i=0;i<90;i++)g.update(1/60);assert(!g.state().overheated);assert(g.state().cannonBurst>1.4);dispatch(windowEvents,'keyup',{code:'Space'});for(let i=0;i<90;i++)g.update(1/60);assert.equal(g.state().cannonBurst,0);assert(!g.state().overheated);
 });
 
+check('shield scarcity uses exact ordinary, heavy, critical and Warden drop thresholds',()=>{
+ g.configure({upgrades:{cannon:0,shield:2,engine:0}});
+ function sequence(values,fn){const random=Math.random;let i=0;Math.random=()=>values[i++]??.99;try{return fn();}finally{Math.random=random;}}
+ function drop(type,roll){const start=g.state().pickups.length;sequence([roll,.99],()=>g.dropEnemySupplies({type,mesh:{position:g.player.pos.clone()}}));return g.state().pickups.slice(start);}
+ for(const critical of [false,true]){
+  g.player.shield=g.maxShield()*.25+(critical?0:.01);
+  for(const [type,chance,value]of [['drone',critical?.45:.24,25],['evader',critical?.45:.24,25],['heavy',critical?.45:.4,35]]){
+   const success=drop(type,chance-.000001);assert.equal(success.length,1);assert.equal(success[0].type,'shield');assert.equal(success[0].value,value);assert.equal(drop(type,chance).length,0);
+  }
+  assert.equal(drop('warden',.999999)[0].value,60);
+ }
+ g.player.shield=g.maxShield();let start=g.state().pickups.length;
+ sequence([.99,0,.25],()=>g.dropEnemySupplies({type:'drone',mesh:{position:g.player.pos.clone()}}));assert.deepEqual(g.state().pickups.slice(start).map(p=>[p.type,p.value]),[['missile',2]]);
+ start=g.state().pickups.length;sequence([0,0,.75],()=>g.dropEnemySupplies({type:'drone',mesh:{position:g.player.pos.clone()}}));assert.deepEqual(g.state().pickups.slice(start).map(p=>[p.type,p.value]),[['shield',25],['missile',4]]);
+});
+check('space and new-sector transitions clear reactor key and reactor sound',()=>{
+ const oldEffects=[...g.art.moving];g.configure({nextMine:1,mode:'play'});g.makeSpace();assert.equal(g.art.moving.length,0);g.movePlayer(0);assert.equal(g.audio.lastState.reactor,0);assert.equal(g.audio.lastState.space,true);assert(!g.state().hasReactorKey);assert.equal(g.reactorProximity(),0);
+ g.makeMine(1);assert.equal(g.art.moving.length,24);assert(g.art.moving.every(s=>!oldEffects.includes(s)));g.movePlayer(0);assert.equal(g.audio.lastState.reactor,0);assert(!g.state().hasReactorKey);assert.equal(g.state().currentRoom,0);assert(!g.state().gateSeen);
+});
 fs.unlinkSync(testModule);
 console.log(`${count} mechanical checks passed using actual Three.js math, geometry, and raycasting. Browser GPU/audio rendering not exercised.`);

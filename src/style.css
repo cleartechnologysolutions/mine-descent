@@ -32,3 +32,5 @@
 /* Persistent low-shield warning leaves the aiming area clear. */
 #shieldWarning{position:fixed;inset:0;z-index:4;pointer-events:none;background:radial-gradient(ellipse at center,transparent 48%,#8d120b80 76%,#ec321ce6 100%);box-shadow:inset 0 0 100px #ec321c66;transition:opacity .3s}
 @media(prefers-reduced-motion:reduce){#shieldWarning{transition:none}}
+
+#chamberLabel,#keyStatus{display:block;font:11px/1.6 monospace;letter-spacing:.6px;color:#afbebf}#chamberLabel{padding-top:9px;border-top:1px solid #72808240;margin-top:12px}#keyStatus{margin-top:3px}
