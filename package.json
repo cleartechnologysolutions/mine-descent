@@ -1,0 +1,18 @@
+{
+  "name": "mine-descent",
+  "version": "3.1.2",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node scripts/serve-local.mjs",
+    "build": "node scripts/assemble.mjs",
+    "validate": "node scripts/validate.mjs",
+    "dev": "npx wrangler dev",
+    "deploy": "npm run build && npx wrangler deploy",
+    "test:audio": "node tests/audio.cjs",
+    "test:mechanics": "node tests/mechanics.mjs"
+  }
+}
