@@ -1,60 +1,44 @@
-# Mine Descent — Download Package
+# DNS Tools
 
-Latest game build: **3.2.1**, including the big golden reactor key, keyed security bulkheads with a mechanical locked sound, louder reactor guidance, distinctive room machinery and effects, rarer shield drops, and doors that open when shot. All existing flight controls and cannon systems are included.
+DNS lookup, Standard Records, common port check, and domain info tool.
 
-## Play on your computer
+Deploy command:
 
-Extract the entire ZIP. Install Node.js 22 or newer if needed, open a terminal in this folder, then run:
-
-```sh
-npm start
+```bash
+npx wrangler deploy
 ```
 
-Open **http://127.0.0.1:8787** in Chrome, Edge, or another WebGL 2 browser. Leave the terminal open while playing; Ctrl+C stops the server. Local play needs no npm install, Cloudflare account, or API keys. All assets are included. Do not open src/index.html directly: the game needs its HTTP routes.
+No database, R2 bucket, or bindings are required.
 
-## Deploy to your Cloudflare account
+Build 9 fixes the crt.sh request to use Cloudflare Workers' supported manual
+redirect mode. Non-success responses, including redirects, are reported
+explicitly while keeping completed DNS results available.
+Company branding is removed from the page and reports.
+Standard Records checks A and CNAME
+for 49 hostnames, including connect, all 45 requested names, and the existing
+autodiscover, autoconfig, and owa entries. Root records, DMARC, and DKIM
+selector checks remain included.
 
-The prebuilt `worker/index.js` contains every game asset. `wrangler.jsonc` points to it. Set `name` in that configuration to the Worker name you want in your account. Deploying to an existing name updates that Worker.
+The 111 standard DNS checks run automatically across three API requests, at most
+40 DNS queries per request and six concurrent queries. The results are
+combined into the existing text report. Unresolved checks and empty record
+sections are hidden.
 
-From this folder:
+Standard Records also searches crt.sh certificate history automatically.
+Discovered hostnames are deduplicated and scoped to the entered domain, then
+checked for current A, AAAA and CNAME records. Already-completed checks are
+not repeated. Additional answers are marked [crt.sh] in the same report.
+Wildcard certificates are not expanded into guessed hostnames.
 
-```sh
-npm install --save-dev wrangler
-npx wrangler login
-npm run deploy
-```
+Certificate history is not a complete inventory of DNS records. Old certificate
+names without current DNS answers are hidden. A crt.sh failure leaves standard
+results visible with a short status message. The provider request times out
+after 15 seconds and has an 8 MiB response cap; discovery checks at most 1,000
+unique hostnames, with an explicit note when that hostname limit is reached.
+Additional DNS checks run in batches of at most 40, with six at a time.
 
-Wrangler opens your browser for Cloudflare login and prints the URL after deployment. Internet access and your own Cloudflare account are required. No D1, KV, R2, or secrets are needed. This standalone configuration publishes to your account's workers.dev address; the original private site's access policy is not included. Configure Cloudflare Access separately for private access.
+Upload the ZIP contents to your existing DNS repository and commit.
+Leave the Build command empty; keep the Deploy command above.
+The page will read DNS Tools with Build 9 beneath it.
 
-Reference: [Wrangler commands](https://developers.cloudflare.com/workers/wrangler/commands/) and [configuration](https://developers.cloudflare.com/workers/wrangler/configuration/).
-
-## Edit and rebuild
-
-Edit files in `src/`, then run:
-
-```sh
-npm run build
-npm run validate
-npm start
-```
-
-Restart the local server after rebuilding. The build embeds source and images into `worker/index.js`. Optional checks:
-
-```sh
-npm run test:audio
-npm run test:mechanics
-```
-
-The mechanics checks use real Three.js math and raycasting with mocked browser rendering. They do not replace checking graphics and sound in your browser.
-
-## Included
-
-- `worker/index.js`: complete prebuilt Cloudflare Worker.
-- `src/`: editable game, textures, and vendored Three.js.
-- `scripts/`: build, validation, and local server.
-- `tests/`: gameplay and audio checks.
-- `wrangler.jsonc`: standalone Cloudflare configuration.
-- `GAME-GUIDE.md`: controls and gameplay details.
-- `src/vendor/LICENSE`: Three.js MIT license.
-
-Checkpoints and settings are stored per browser and site address. Existing hosted-game progress does not automatically transfer to localhost or a new domain.
+Run the mocked DNS and browser-script checks with: node test.mjs
