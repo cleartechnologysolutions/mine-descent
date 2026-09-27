@@ -1,6 +1,6 @@
 {
   "name": "mine-descent",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,6 +16,7 @@
     "test:mechanics": "node tests/mechanics.mjs",
     "test:multiplayer": "node tests/multiplayer.mjs",
     "test:sockets": "node tests/sockets.mjs",
-    "test:rate-limit": "node tests/rate-limit.mjs"
+    "test:rate-limit": "node tests/rate-limit.mjs",
+    "test:effects": "node tests/multiplayer-effects.mjs"
   }
 }

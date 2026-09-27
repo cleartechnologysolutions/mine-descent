@@ -551,13 +551,13 @@ function update(dt){if(multiplayer.active){multiplayer.tick(dt);return;}time+=dt
 function menuScene(){makeMine(0);mode='menu';$('hud').hidden=true;$('toast').style.opacity=0;camera.position.set(0,2,12);camera.lookAt(-6,0,-14);if(enemies[0]){enemies[0].pos.set(5,0,-6);enemies[0].mesh.position.copy(enemies[0].pos);enemies[0].mesh.lookAt(camera.position);enemies[0].mesh.scale.setScalar(1.2);}cockpit.visible=false;}
 let last=performance.now();function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.035);last=now;if(mode==='play')update(dt);else if(mode==='menu'){time+=dt;art.update(time,dt);camera.position.x=Math.sin(time*.1)*.4;camera.lookAt(-6,0,-14);for(const e of enemies){e.model.animate?.(time,dt,0,0);}}cinema.render(scene,camera,time);}menuScene();requestAnimationFrame(frame);
 // Read-only diagnostics for support and automated mechanical checks.
-window.minedescent={snapshot:()=>({mode,zone,mine,nextMine,stage,enemies:enemies.length,hull:player.hull,shield:player.shield,score,salvage,rooms:rooms.length,surveyed:visitedRooms.size,room:mineLayout?.roomIdentity[currentRoom]?.name,hasReactorKey,gateSeen,wingEntered,pendingUpgrades,upgrades:{...upgrades},arsenal:cleanArsenal(arsenal),position:player.pos.toArray(),renderer:renderer.info.render}),version:'4.0.1'};
+window.minedescent={snapshot:()=>({mode,zone,mine,nextMine,stage,enemies:enemies.length,hull:player.hull,shield:player.shield,score,salvage,rooms:rooms.length,surveyed:visitedRooms.size,room:mineLayout?.roomIdentity[currentRoom]?.name,hasReactorKey,gateSeen,wingEntered,pendingUpgrades,upgrades:{...upgrades},arsenal:cleanArsenal(arsenal),position:player.pos.toArray(),renderer:renderer.info.render}),version:'4.0.2'};
 
 // Multiplayer adapter: the server owns physics/combat, the browser renders snapshots.
-const netShots=new Map(),netPickups=new Map();let rival=null,priorHealth=200,firstNetFrame=true,netWeapon=null,netMeltdown=0;
+const netShots=new Map(),netPickups=new Map();let rival=null,priorHealth=200,firstNetFrame=true,netWeapon=null,netMeltdown=0,lastNetEffect=0;
 multiplayer=installMultiplayer({
  unlock(){audio.start();audio.pause(false);},
- reset(seat){makeMine(0);mode='menu';priorHealth=200;for(const p of pickups){world.remove(p.mesh);disposeGroup(p.mesh);}pickups=[];
+ reset(seat){makeMine(0);mode='menu';priorHealth=200;lastNetEffect=0;for(const p of pickups){world.remove(p.mesh);disposeGroup(p.mesh);}pickups=[];
   rival=new T.Group();const hull=new T.Mesh(new T.ConeGeometry(1.1,3.7,6),mat(seat===0?0xffc43d:0x3399ff));hull.rotation.x=-Math.PI/2;rival.add(hull);
   box(V(0,0,.4),V(4,.25,1.3),mat(0x9aa9b7),rival);box(V(0,.55,0),V(.8,.5,1.2),glow(seat===0?0xffdf55:0x66cfff),rival);world.add(rival);
  },
@@ -570,12 +570,21 @@ multiplayer=installMultiplayer({
   player.pos.lerp(V(...p.pos),Math.min(1,dt*18));player.q.slerp(new T.Quaternion(...p.q),Math.min(1,dt*22));for(const k of ['hull','shield','heat','boost','missiles'])player[k]=p[k];arsenal=cleanArsenal(p.arsenal);if(netWeapon===arsenal.equipped)netWeapon=null;overheated=p.hot;cannonRecovery=p.recovery;
   if(p.hull+p.shield<priorHealth){audio.sfx('hit');damageFlash=.6;}priorHealth=p.hull+p.shield;damageFlash=Math.max(0,damageFlash-dt);
   rival.visible=other.hull>0;rival.position.lerp(V(...other.pos),Math.min(1,dt*18));rival.quaternion.slerp(new T.Quaternion(...other.q),Math.min(1,dt*22));
-  const enemyStates=new Map(state.enemies.map(e=>[e.id,e]));for(const e of [...enemies]){const n=enemyStates.get(e.id);if(!n){world.remove(e.mesh);disposeGroup(e.mesh);enemies.splice(enemies.indexOf(e),1);art.burst(world,e.mesh.position,1,0xff9944);audio.sfx('robotDeath');continue;}e.hp=n.hp;e.mesh.visible=true;e.mesh.position.lerp(V(...n.pos),Math.min(1,dt*18));e.mesh.quaternion.fromArray(n.q);e.model.animate?.(time,dt,0,0);}
+  const enemyStates=new Map(state.enemies.map(e=>[e.id,e]));for(const e of [...enemies]){const n=enemyStates.get(e.id);if(!n){world.remove(e.mesh);disposeGroup(e.mesh);enemies.splice(enemies.indexOf(e),1);audio.sfx(e.type==='warden'?'wardenDeath':'robotDeath',pan(e.mesh.position),1/(1+e.mesh.position.distanceToSquared(player.pos)/2500));continue;}e.hp=n.hp;e.mesh.visible=true;e.mesh.position.lerp(V(...n.pos),Math.min(1,dt*18));e.mesh.quaternion.fromArray(n.q);e.model.animate?.(time,dt,0,0);}
   const sync=(map,items,create)=>{const ids=new Set(items.map(n=>n.id));for(const [id,m]of map)if(!ids.has(id)){world.remove(m);disposeGroup(m);map.delete(id);}for(const n of items){let m=map.get(n.id);if(!m){m=create(n);map.set(n.id,m);}m.position.fromArray(n.pos);if(n.q)m.quaternion.fromArray(n.q);}};
-  sync(netShots,state.shots,n=>{const m=mesh(geometries.bolt,glow(n.enemy?0xff5136:n.type==='missile'?0xffc976:0x66cfff),V(...n.pos),V(.18,.18,.8));audio.sfx(n.enemy?'robotFire':n.type==='missile'?'missile':'laser',pan(m.position),.3);return m;});
+  sync(netShots,state.shots,n=>{const weapon=cannonById(n.type==='laser'?'pulse':n.type),color=n.enemy?0xff5136:n.type==='missile'?0xffc976:weapon.color,size=n.type==='missile'?V(.25,.25,.7):n.enemy?V(.12,.12,.85):V(...weapon.size);return mesh(geometries.bolt,glow(color),V(...n.pos),size);});
+  // Effects are server events, independent of projectile snapshots: a close hit
+  // can disappear between snapshots and a spread weapon still sounds only once.
+  for(const effect of state.effects||[]){if(effect.id<=lastNetEffect)continue;lastNetEffect=effect.id;const pos=V(...effect.pos);
+   if(effect.kind==='burst'){explosion(pos,effect.color,effect.scale);continue;}
+   const own=effect.owner===seat,volume=own?effect.volume:effect.volume/(1+pos.distanceToSquared(player.pos)/2200);
+   audio.sfx(effect.sound,own?0:pan(pos),volume);if(own&&effect.kick)shake=Math.max(shake,effect.kick);
+  }
+  flashLight.intensity*=Math.exp(-dt*14);shake=Math.max(0,shake-dt*.8);
+  for(let i=particles.length-1;i>=0;i--){const particle=particles[i];particle.life-=dt;particle.mesh.position.addScaledVector(particle.vel,dt);if(particle.light)particle.mesh.intensity*=.83;else particle.mesh.scale.multiplyScalar(Math.max(0,1-dt*1.5));if(particle.life<=0){world.remove(particle.mesh);particle.mesh.material?.dispose();particles.splice(i,1);}}
   sync(netPickups,state.pickups,n=>art.pickup(world,V(...n.pos),n.type,cannonById(n.weapon)?.color));
   state.doors.forEach((n,i)=>{Object.assign(doors[i],n);positionDoor(doors[i]);});state.generators.forEach((hp,i)=>{generators[i].hp=hp;generators[i].mesh.visible=hp>0;});
   reactor.hp=state.reactor.hp;reactor.active=state.reactor.active;reactor.shield.visible=!reactor.active;reactor.core.rotation.y+=dt*.3;hasReactorKey=state.hasReactorKey;netMeltdown=state.meltdown;
-  currentRoom=nearestRoom(player.pos);visitedRooms.add(currentRoom);art.updateLighting(player.pos);camera.position.copy(player.pos);camera.quaternion.copy(player.q);camera.updateMatrixWorld();updateObjectives();updateHUD(dt);audio.update({speed:0,combat:enemies.some(e=>e.mesh.position.distanceTo(player.pos)<60)?1:0,danger:player.hull<30?.7:0,reactor:reactorProximity()},dt);if(netMeltdown>0){$('phase').textContent='REACTOR MELTDOWN';$('objective').textContent='Return to the starting room';$('detail').textContent='Stay within 12 m of its center to survive the blast.';$('timer').hidden=false;$('timer').textContent=Math.ceil(netMeltdown)+'s';}
+  currentRoom=nearestRoom(player.pos);visitedRooms.add(currentRoom);art.updateLighting(player.pos);camera.position.copy(player.pos);camera.quaternion.copy(player.q);if(shake>0)camera.position.add(V((Math.random()-.5)*shake,(Math.random()-.5)*shake,0));camera.updateMatrixWorld();updateObjectives();updateHUD(dt);audio.update({speed:0,combat:enemies.some(e=>e.mesh.position.distanceTo(player.pos)<60)?1:0,danger:player.hull<30?.7:0,reactor:reactorProximity()},dt);if(netMeltdown>0){$('phase').textContent='REACTOR MELTDOWN';$('objective').textContent='Return to the starting room';$('detail').textContent='Stay within 12 m of its center to survive the blast.';$('timer').hidden=false;$('timer').textContent=Math.ceil(netMeltdown)+'s';}
  }
 });

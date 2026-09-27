@@ -6,6 +6,7 @@ import {CANNONS,cannonById,cleanArsenal} from '../src/weapons.js';
 export function createEngine(){
 
 function damagePlayerSplash(p,n){player=p;damage(n,'other player');}
+const effects=[];let effectId=0;function netEffect(effect){effects.push({...effect,id:++effectId,at:time});if(effects.length>128)effects.shift();}
 const pilots=[],controls=[{},{}];let serial=0,meltdown=0,result=null;
 class Element {constructor(id){this.value=id==='difficulty'?'normal':id==='sensitivity'?'80':'65';this.style={};this.hidden=false;this.children=[];}addEventListener(){}focus(){}append(){}replaceChildren(){}getContext(){return new Proxy({},{get:()=>()=>{}});}}
 const els=new Map(),document={getElementById(id){if(!els.has(id))els.set(id,new Element(id));return els.get(id);},createElement:()=>new Element('x'),addEventListener(){}};
@@ -312,7 +313,7 @@ function fire(missile=false,manual=true){
   const origin=pos.clone().addScaledVector(shipRight,off),muzzle=origin.clone().sub(player.pos);raycaster.set(player.pos,muzzle.clone().normalize());raycaster.far=muzzle.length();const block=intersectWalls();if(block.length)origin.copy(block[0].point).addScaledVector(muzzle.normalize(),-.1);
   for(const [x,y]of pellets)createShot(origin,dir.clone().addScaledVector(shipRight,x).addScaledVector(shipUp,y).normalize(),missile?'missile':weapon.id==='pulse'?'laser':weapon.id,false,target);
  }
- audio.sfx(missile?'missile':weapon.sound);shake=Math.max(shake,missile?.13:weapon.kick);
+ netEffect({kind:'sound',sound:missile?'missile':weapon.sound,pos:player.pos.toArray(),owner:pilots.indexOf(player),volume:1,kick:missile?.13:weapon.kick});shake=Math.max(shake,missile?.13:weapon.kick);
  if(browseUntil>time)drawCannonPicker();
 }
 function createShot(pos,dir,type,enemy=false,target=null){
@@ -323,7 +324,7 @@ function createShot(pos,dir,type,enemy=false,target=null){
   damage:enemy?(6+mine*2)*diff():type==='missile'?100:weapon.damage+upgrades.cannon*3});
 }
 function segmentDistance(p,a,b){const ab=b.clone().sub(a),t=clamp(p.clone().sub(a).dot(ab)/Math.max(ab.lengthSq(),.001),0,1);return p.distanceTo(a.clone().addScaledVector(ab,t));}
-function explosion(pos,color=0xff8b43,scale=1){return;art.burst(world,pos,scale,color);for(let i=0;i<Math.floor(20*scale);i++){const velocity=V(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize().multiplyScalar((5+Math.random()*15)*scale);const m=mesh(geometries.bolt,glow(i%3===0?0xffffd1:color),pos,V(.13,.13,.13).multiplyScalar(scale));particles.push({mesh:m,vel:velocity,life:.3+Math.random()*.7,max:1,scale});}if(particles.length>450){for(const p of particles.splice(0,particles.length-450)){world.remove(p.mesh);p.mesh.material.dispose();}}flashLight.position.copy(pos);flashLight.color.setHex(color);flashLight.intensity=Math.max(flashLight.intensity,160*scale);}
+function explosion(pos,color=0xff8b43,scale=1){netEffect({kind:'burst',pos:pos.toArray(),color,scale});return;art.burst(world,pos,scale,color);for(let i=0;i<Math.floor(20*scale);i++){const velocity=V(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize().multiplyScalar((5+Math.random()*15)*scale);const m=mesh(geometries.bolt,glow(i%3===0?0xffffd1:color),pos,V(.13,.13,.13).multiplyScalar(scale));particles.push({mesh:m,vel:velocity,life:.3+Math.random()*.7,max:1,scale});}if(particles.length>450){for(const p of particles.splice(0,particles.length-450)){world.remove(p.mesh);p.mesh.material.dispose();}}flashLight.position.copy(pos);flashLight.color.setHex(color);flashLight.intensity=Math.max(flashLight.intensity,160*scale);}
 function dropEnemySupplies(e){
  const low=player.shield<=maxShield()*.25;
  const chance=e.type==='warden'?1:Math.max(e.type==='heavy'?.4:.24,low?.45:0);
@@ -379,7 +380,7 @@ function updateShots(dt){
   if(hit||s.life<=0){
    if((s.type==='missile'||s.splash>0)&&!s.enemy&&mode==='play'){
     const radius=s.type==='missile'?12:s.splashRadius,damage=s.type==='missile'?70:s.splash;
-    explosion(end,s.color,1.4);audio.sfx('explosion',pan(end),s.type==='missile'?1:.65);
+    explosion(end,s.color,1.4);netEffect({kind:'sound',sound:'explosion',pos:end.toArray(),owner:-1,volume:s.type==='missile'?1:.65});
     for(const p of pilots)if(p.hull>0&&pilots.indexOf(p)!==s.owner&&p!==hit?.object&&p.pos.distanceTo(end)<radius&&visible(end,p.pos)){player=p;damagePlayerSplash(p,damage); } for(const e of [...enemies])if(e!==hit?.object&&e.mesh.position.distanceTo(end)<radius&&visible(end,e.mesh.position))enemyHit(e,damage);
     for(const g of generators)if(g!==hit?.object&&g.hp>0&&g.pos.distanceTo(end)<radius&&visible(end,g.pos))hitGenerator(g,damage);
    }else if(s.life>0)explosion(end,s.color,.22);
@@ -391,7 +392,7 @@ function damage(amount,source){if(mode!=='play')return;let remaining=amount;cons
 function destroyReactor(){if(!meltdown)meltdown=12;reactor.hp=0;}
 function updateEnemies(dt){for(const e of enemies){const target=pilots.filter(p=>p.hull>0).sort((a,b)=>a.pos.distanceToSquared(e.pos)-b.pos.distanceToSquared(e.pos))[0];if(!target)continue;player=target;if(zone==='mine'&&e.pos.distanceToSquared(player.pos)>120*120){e.mesh.visible=false;e.inSight=false;continue;}e.mesh.visible=true;e.phase+=dt;const speed=e.evader?2.8:e.type==='warden'?.36:.65;if(zone==='space'){const chase=player.pos.clone().sub(e.pos),distance=chase.length();if(distance<550&&distance>65){const proposed=e.pos.clone().addScaledVector(chase.normalize(),dt*(e.type==='heavy'?22:37));if(allowed(proposed,e.r))e.pos.copy(proposed);}}const nextPosition=e.pos.clone().add(e.evader?V(Math.sin(e.phase*speed)*3.4,Math.cos(e.phase*2.1)*2.6,Math.sin(e.phase*1.7)*2.2):V(Math.sin(e.phase*speed)*1.7,Math.cos(e.phase*.8)*1.1,Math.sin(e.phase*.4)*1.2));if(zone==='space'||allowed(nextPosition,e.r))e.mesh.position.copy(nextPosition);e.mesh.lookAt(player.pos);e.shot-=dt;e.flash-=dt;if(e.flash<=0)e.body.material.emissive.setHex(0);const dist=e.mesh.position.distanceTo(player.pos),inSight=dist<(zone==='space'?380:85)&&visible(e.mesh.position,player.pos),volume=1/(1+dist*dist/(zone==='space'?18000:2200)),prefix=e.type==='warden'?'warden':'robot';e.inSight=inSight;if(inSight&&!e.awake){e.awake=true;e.shot=Math.max(e.shot,1.6);audio.sfx(prefix+'Wake',pan(e.mesh.position),volume);}e.servo-=dt;if(inSight&&e.servo<=0){audio.sfx(prefix+'Move',pan(e.mesh.position),volume*.35);e.servo=4+Math.random()*5;}
 if(!e.charging&&e.shot<=.6&&inSight){e.charging=true;e.charge=.6;e.chargeDeadline=performance.now()+600;audio.sfx(prefix+'Charge',pan(e.mesh.position),volume);}
-if(e.charging){e.charge=Math.max(0,(e.chargeDeadline-performance.now())/1000);if(e.charge<=0){e.charging=false;e.shot=(e.type==='warden'?1.45:e.evader?1.65:2.2+Math.random())/(1+mine*.14);if(inSight){const dir=player.pos.clone().addScaledVector(player.vel,.16).sub(e.mesh.position).normalize(),origin=e.mesh.position.clone().addScaledVector(dir,e.r+1);createShot(origin,dir,'enemy',true);audio.sfx(prefix+'Fire',pan(e.mesh.position),volume);if(e.type==='warden')createShot(origin,dir.clone().add(V(.07,.02,0)).normalize(),'enemy',true);}}}e.model.animate?.(time,dt,e.charging?1-e.charge/.6:0,e.mesh.position.distanceTo(e.pos));e.mesh.updateMatrixWorld(true);}}
+if(e.charging){e.charge=Math.max(0,(e.chargeDeadline-performance.now())/1000);if(e.charge<=0){e.charging=false;e.shot=(e.type==='warden'?1.45:e.evader?1.65:2.2+Math.random())/(1+mine*.14);if(inSight){const dir=player.pos.clone().addScaledVector(player.vel,.16).sub(e.mesh.position).normalize(),origin=e.mesh.position.clone().addScaledVector(dir,e.r+1);createShot(origin,dir,'enemy',true);netEffect({kind:'sound',sound:prefix+'Fire',pos:e.mesh.position.toArray(),owner:-1,volume:1});if(e.type==='warden')createShot(origin,dir.clone().add(V(.07,.02,0)).normalize(),'enemy',true);}}}e.model.animate?.(time,dt,e.charging?1-e.charge/.6:0,e.mesh.position.distanceTo(e.pos));e.mesh.updateMatrixWorld(true);}}
 function updatePickups(dt){
  for(let i=pickups.length-1;i>=0;i--){
   const p=pickups[i];p.mesh.rotation.y+=dt;p.mesh.position.y=p.baseY+Math.sin(time*2)*.45;
@@ -556,12 +557,12 @@ makeMine(0);mode='play';flightInputActive=true;
 for(let i=0;i<2;i++){pilots.push({pos:rooms[i?1:0].clone().add(V(0,0,9)),q:new T.Quaternion(),vel:V(),shield:100,hull:100,heat:0,boost:100,missiles:6,lastHit:-100,fw:0,mw:0,burst:0,recovery:0,hot:false,arsenal:cleanArsenal()});}
 function select(p){player=p;fireWait=p.fw;missileWait=p.mw;cannonBurst=p.burst;cannonRecovery=p.recovery;overheated=p.hot;arsenal=p.arsenal;}
 function retain(p){p.fw=fireWait;p.mw=missileWait;p.burst=cannonBurst;p.recovery=cannonRecovery;p.hot=overheated;}
-function step(dt){if(result)return;time+=dt;
+function step(dt){if(result)return;time+=dt;while(effects.length&&effects[0].at<time-2)effects.shift();
  for(let i=0;i<2;i++){const p=pilots[i];if(p.hull<=0)continue;select(p);const c=controls[i];$('sensitivity').value=c.sensitivity||80;$('invert').checked=!!c.invert;if(arsenal.owned.includes(c.weapon))arsenal.equipped=c.weapon;keys.clear();for(const k of c.keys||[])keys.add(k);steering.x=c.x||0;steering.y=c.y||0;mouse.left=!!c.left;mouse.right=!!c.right;flightInputActive=true;fireWait-=dt;missileWait-=dt;updateCannonCooling(dt);movePlayer(dt);if(keys.has('Space'))fire(false,!p.wasFire);if(keys.has('KeyX'))fire(true);p.wasFire=keys.has('Space');updatePickups(dt);retain(p);}
  updateEnemies(dt);world.updateMatrixWorld(true);updateShots(dt);
  if(meltdown>0){meltdown-=dt;if(meltdown<=0){for(const p of pilots)if(p.pos.distanceTo(rooms[0])>12){p.hull=0;p.cause='reactor';}result={winner:pilots[0].hull>0&&pilots[1].hull<=0?0:pilots[1].hull>0&&pilots[0].hull<=0?1:null,reason:'Reactor explosion'};}}
  const alive=pilots.map((p,i)=>p.hull>0?i:-1).filter(i=>i>=0);if(alive.length<2)result={winner:alive.length?alive[0]:null,reason:pilots.find(p=>p.hull<=0)?.cause||'Ship destroyed'};
 }
-return {step,input(i,c){controls[i]=c;},snapshot(){return {players:pilots.map(p=>({pos:p.pos.toArray(),q:p.q.toArray(),shield:p.shield,hull:p.hull,heat:p.heat,boost:p.boost,missiles:p.missiles,hot:p.hot,recovery:p.recovery,arsenal:p.arsenal})),enemies:enemies.map(e=>({id:e.id,pos:e.mesh.position.toArray(),q:e.mesh.quaternion.toArray(),hp:e.hp})),shots:shots.map(s=>({id:s.netId,pos:s.mesh.position.toArray(),q:s.mesh.quaternion.toArray(),type:s.type,enemy:s.enemy,owner:s.owner})),pickups:pickups.map(p=>({id:p.netId,pos:p.mesh.position.toArray(),type:p.type,value:p.value,weapon:p.weapon})),doors:doors.map(d=>({open:d.open,hold:d.hold,locked:d.locked})),generators:generators.map(g=>g.hp),reactor:{hp:reactor.hp,active:reactor.active},hasReactorKey,meltdown,result};},dispose(){clearWorld();},debug:{pilots,damage:(i,n)=>{player=pilots[i];damage(n,'robot');},reactor:()=>{reactor.active=true;reactor.hp=0;destroyReactor();}}};
+return {step,input(i,c){controls[i]=c;},snapshot(){return {effects:effects.map(e=>({...e})),players:pilots.map(p=>({pos:p.pos.toArray(),q:p.q.toArray(),shield:p.shield,hull:p.hull,heat:p.heat,boost:p.boost,missiles:p.missiles,hot:p.hot,recovery:p.recovery,arsenal:p.arsenal})),enemies:enemies.map(e=>({id:e.id,pos:e.mesh.position.toArray(),q:e.mesh.quaternion.toArray(),hp:e.hp})),shots:shots.map(s=>({id:s.netId,pos:s.mesh.position.toArray(),q:s.mesh.quaternion.toArray(),type:s.type,enemy:s.enemy,owner:s.owner})),pickups:pickups.map(p=>({id:p.netId,pos:p.mesh.position.toArray(),type:p.type,value:p.value,weapon:p.weapon})),doors:doors.map(d=>({open:d.open,hold:d.hold,locked:d.locked})),generators:generators.map(g=>g.hp),reactor:{hp:reactor.hp,active:reactor.active},hasReactorKey,meltdown,result};},dispose(){clearWorld();},debug:{pilots,damage:(i,n)=>{player=pilots[i];damage(n,'robot');},reactor:()=>{reactor.active=true;reactor.hp=0;destroyReactor();}}};
 
 }

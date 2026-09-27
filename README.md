@@ -1,4 +1,4 @@
-# Mine Descent 4.0.1 — Two-player mode
+# Mine Descent 4.0.2 — Two-player mode
 
 Single-player campaign remains available. The new **Two player · Create match** button starts an online duel in Iron Hollow, the first mine.
 
@@ -57,3 +57,7 @@ Three.js license: `src/vendor/LICENSE`. Existing controls and campaign instructi
 ## 4.0.1 startup fix
 
 A live test reproduced both clients closing with code 1008 (Too many messages). Normal 10 Hz inputs could arrive in a burst after server initialization. Lobby heartbeats now run once per second, and the server allows bounded bursts with a token bucket while still rejecting sustained flooding. The server also skips rendering-only mesh batching, room effects, and cockpit construction. Collision geometry and browser visuals remain intact. Abnormal closes now show their close code and reason instead of a false Draw result.
+
+## 4.0.2 weapon effects
+
+Multiplayer uses the original per-weapon projectile colors and sizes, firing sounds at full local volume, recoil, and impact bursts. Robots retain their robot/Warden firing sounds. Server effect IDs prevent repeated playback across snapshots and keep one sound per trigger pull for spread weapons, including shots that hit before the next snapshot. Damage, fire cadence, controls, and server authority are unchanged. `npm run test:effects` verifies the original visuals, sound selection, volume, and event deduplication with mocked rendering.

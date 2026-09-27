@@ -24,7 +24,7 @@ const output='import {MineMatch} from "./match.js"; export {MineMatch};\n// Mine
     if(request.headers.get('Origin')!==url.origin)return new Response('Origin not allowed',{status:403});
     return env.MATCHES.get(env.MATCHES.idFromName(url.pathname.slice(7))).fetch(request);
   }
-  if(url.pathname==='/health')return Response.json({status:'ok',game:'Mine Descent',version:'4.0.1'});
+  if(url.pathname==='/health')return Response.json({status:'ok',game:'Mine Descent',version:'4.0.2'});
   if(!['GET','HEAD'].includes(request.method))return new Response('Method not allowed',{status:405,headers:{Allow:'GET, HEAD'}});
   const asset=assets[url.pathname];
   if(!asset)return new Response('Not found',{status:404});
