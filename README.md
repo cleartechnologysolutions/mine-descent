@@ -1,4 +1,4 @@
-# Mine Descent 4.0.0 — Two-player mode
+# Mine Descent 4.0.1 — Two-player mode
 
 Single-player campaign remains available. The new **Two player · Create match** button starts an online duel in Iron Hollow, the first mine.
 
@@ -8,7 +8,7 @@ Upload **all the files inside this folder** to the existing game's repository, p
 
 Cloudflare build command: `npm run build`
 
-Cloudflare deploy command: `npx wrangler deploy`
+Cloudflare deploy command: `npx wrangler deploy --config wrangler.jsonc`
 
 The included Wrangler configuration creates the `MATCHES` Durable Object binding and its migration automatically. Keep the migration in the configuration for future deployments. No D1, R2, TURN service, passwords, or API keys are needed. Keep any existing custom-domain configuration from your deployment.
 
@@ -53,3 +53,7 @@ Online matches keep a Durable Object active while the simulation runs; this cons
 `src/` contains the browser game. `worker/match.js` manages rooms and validates input. `scripts/multiplayer-engine.mjs` generates the server simulation from the same mechanics used by single player. `worker/index.js` and `worker/engine.js` are generated; edit source and rebuild instead. Include every source folder when deploying because the server also imports shared modules.
 
 Three.js license: `src/vendor/LICENSE`. Existing controls and campaign instructions: `GAME-GUIDE.md`.
+
+## 4.0.1 startup fix
+
+A live test reproduced both clients closing with code 1008 (Too many messages). Normal 10 Hz inputs could arrive in a burst after server initialization. Lobby heartbeats now run once per second, and the server allows bounded bursts with a token bucket while still rejecting sustained flooding. The server also skips rendering-only mesh batching, room effects, and cockpit construction. Collision geometry and browser visuals remain intact. Abnormal closes now show their close code and reason instead of a false Draw result.

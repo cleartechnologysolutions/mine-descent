@@ -3,6 +3,7 @@ const root=new URL('../',import.meta.url);
 let s=fs.readFileSync(new URL('src/game.js',root),'utf8').replace("import {installMultiplayer} from '/multiplayer.js';\n",'').replaceAll('if(multiplayer.active)return;','').replace('if(multiplayer.active){multiplayer.tick(dt);return;}','');
 const imports=s.split('\n').filter(l=>l.startsWith('import ')).join('\n').replaceAll("'/three.module.min.js'","'../src/vendor/three.module.js'").replaceAll("'/art.js'","'../src/art.js'").replaceAll("'/robots.js'","'../src/robots.js'").replaceAll("'/layouts.js'","'../src/layouts.js'").replaceAll("'/weapons.js'","'../src/weapons.js'");
 s=s.split('\n').filter(l=>!l.startsWith('import ')).join('\n');
+s=s.replace('art.batchEnvironment(world);','').replace('art.roomEffects(world,rooms,mineLayout.roomIdentity);','').replace('const cockpit=art.cockpit(camera);','const cockpit=new T.Group();');
 s=s.replace('new T.WebGLRenderer','new MockRenderer');
 s=s.slice(0,s.indexOf('let last=performance.now();'));
 s=s.replace('function updateEnemies(dt){for(const e of enemies){','function updateEnemies(dt){for(const e of enemies){const target=pilots.filter(p=>p.hull>0).sort((a,b)=>a.pos.distanceToSquared(e.pos)-b.pos.distanceToSquared(e.pos))[0];if(!target)continue;player=target;');

@@ -1,8 +1,8 @@
 export function installMultiplayer(api){
  const panel=document.createElement('div');panel.id='multiplayer';panel.innerHTML='<button id="hostMatch" class="secondary">TWO PLAYER · CREATE MATCH</button><p id="matchNotice" role="status"></p><input id="matchLink" aria-label="Match link" readonly hidden><button id="copyMatch" hidden>Copy match link</button><button id="joinMatch" class="secondary" hidden>JOIN TWO-PLAYER MATCH</button><button id="leaveMatch" hidden>Leave match</button>';
  document.getElementById('start').after(panel);
- const $=id=>document.getElementById(id);let ws=null,seat=0,latest=null,active=false,playing=false,done=false,inputTimer=null,started=0;
- const sendInput=()=>{if(ws?.readyState===1)ws.send(JSON.stringify({type:'input',...api.input(playing&&performance.now()>=started)}));};
+ const $=id=>document.getElementById(id);let ws=null,seat=0,latest=null,active=false,playing=false,done=false,inputTimer=null,started=0,lastSent=0;
+ const sendInput=()=>{if(!playing&&performance.now()-lastSent<1000)return;lastSent=performance.now();if(ws?.readyState===1)ws.send(JSON.stringify({type:'input',...api.input(playing&&performance.now()>=started)}));};
  const status=text=>$('matchNotice').textContent=text;
  const end=result=>{if(done)return;done=true;playing=false;clearInterval(inputTimer);api.finish(result.winner===null?'Draw':result.winner===seat?'You win!':'Ship destroyed',result.reason);};
  function connect(id){if(active)return;done=false;active=true;playing=false;latest=null;api.unlock();status('Connecting…');$('hostMatch').disabled=true;$('joinMatch').disabled=true;$('start').disabled=true;$('continue').disabled=true;$('leaveMatch').hidden=false;
@@ -15,7 +15,7 @@ export function installMultiplayer(api){
    if(d.type==='end')end(d.result);
   };
   ws.onerror=()=>status('Unable to connect. Deploy the full multiplayer build, or create a fresh match.');
-  ws.onclose=()=>{if(!done)end({winner:null,reason:'Connection closed. Return to the menu and create a fresh match.'});};
+  ws.onclose=event=>{if(done)return;done=true;playing=false;clearInterval(inputTimer);api.finish('Connection interrupted','Connection closed ('+event.code+'): '+(event.reason||'No close reason received. The network or server ended the connection.')+' Return to the menu and create a new match.');};
   inputTimer=setInterval(sendInput,100);
  }
  $('hostMatch').onclick=()=>{const id=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(16).padStart(2,'0')).join('');const url=new URL(location.href);url.search='match='+id;history.replaceState(null,'',url);$('matchLink').value=url.href;$('matchLink').hidden=false;$('copyMatch').hidden=false;connect(id);};

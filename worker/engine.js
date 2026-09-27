@@ -41,7 +41,7 @@ function box(pos,size,material=wallmat,parent=world){return mesh(geometries.box,
 function glow(color){return new T.MeshBasicMaterial({color});}
 function line(a,b,color=0x7fffe5,parent=world){const g=new T.BufferGeometry().setFromPoints([a,b]);const l=new T.Line(g,new T.LineBasicMaterial({color,transparent:true,opacity:.75}));parent.add(l);return l;}
 const starsG=new T.BufferGeometry(),starArray=[];for(let i=0;i<2800;i++){const p=V(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize().multiplyScalar(2500+Math.random()*2000);starArray.push(p.x,p.y,p.z);}starsG.setAttribute('position',new T.Float32BufferAttribute(starArray,3));const stars=new T.Points(starsG,new T.PointsMaterial({color:0xaed8ff,size:2.2,sizeAttenuation:true}));scene.add(stars);
-const cockpit=art.cockpit(camera);cockpit.visible=false;
+const cockpit=new T.Group();cockpit.visible=false;
 function clearWorld(){hasReactorKey=false;gateSeen=false;wingEntered=false;currentRoom=0;audio.update({reactor:0});resetCannonBrowse();art.reset();const keepMats=new Set([rockmat,wallmat,darkmat,edgemat,goldmat]),seenMats=new Set(),seenGeo=new Set();world.traverse(o=>{if(o.geometry&&!Object.values(geometries).includes(o.geometry)&&!seenGeo.has(o.geometry)){seenGeo.add(o.geometry);o.geometry.dispose();}for(const m of (Array.isArray(o.material)?o.material:[o.material]))if(m&&!m.userData.shared&&!keepMats.has(m)&&!seenMats.has(m)){seenMats.add(m);m.userData.ownedTexture?.dispose();m.dispose();}});scene.remove(world);world=new T.Group();scene.add(world);enemies=[];shots=[];particles=[];pickups=[];walls=[];rooms=[];links=[];decor=[];spaceObjects=[];reactor=null;doors=[];generators=[];visitedRooms=new Set();coreFound=false;mineLayout=null;fireWait=0;missileWait=0;overheated=false;cannonBurst=0;cannonRecovery=0;player.heat=0;mouse.left=false;mouse.right=false;centerSteering();flashLight.intensity=0;}
 function disposeGroup(group){const seen=new Set();group.traverse(o=>{if(o.geometry&&!Object.values(geometries).includes(o.geometry))o.geometry.dispose();for(const m of(Array.isArray(o.material)?o.material:[o.material]))if(m&&!m.userData.shared&&!seen.has(m)&&![rockmat,wallmat,darkmat,edgemat,goldmat].includes(m)){seen.add(m);m.userData.ownedTexture?.dispose();m.dispose();}});}
 function toast(text,seconds=3.5){$('toast').textContent=text;toastTime=seconds;$('toast').style.opacity=1;}
@@ -63,8 +63,8 @@ function makeMine(index){
   walls.push(art.room(world,c,i,mineLayout.roomIdentity[i]));
  }
  for(const [a,b]of links)makeTunnel(rooms[a],rooms[b],color);
- art.batchEnvironment(world);
- art.roomEffects(world,rooms,mineLayout.roomIdentity);
+ 
+ 
  // Moving assemblies are created after the static environment is batched.
  links.forEach(([a,b],i)=>{const security=mineLayout.reactorGate.includes(a)&&mineLayout.reactorGate.includes(b);if(security||i%2===0||a===mineLayout.coreRoom||b===mineLayout.coreRoom)makeDoor(a,b,security);});
  const coreRoom=mineLayout.coreRoom,built=art.reactor(world,rooms[coreRoom].clone().add(V(0,1,0)));

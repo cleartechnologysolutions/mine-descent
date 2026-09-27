@@ -1,6 +1,6 @@
 {
   "name": "mine-descent",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,10 +11,11 @@
     "build": "node scripts/assemble.mjs",
     "validate": "node scripts/validate.mjs",
     "dev": "npx wrangler dev",
-    "deploy": "npm run build && npx wrangler deploy",
+    "deploy": "npm run build && npx wrangler deploy --config wrangler.jsonc",
     "test:audio": "node tests/audio.cjs",
     "test:mechanics": "node tests/mechanics.mjs",
     "test:multiplayer": "node tests/multiplayer.mjs",
-    "test:sockets": "node tests/sockets.mjs"
+    "test:sockets": "node tests/sockets.mjs",
+    "test:rate-limit": "node tests/rate-limit.mjs"
   }
 }

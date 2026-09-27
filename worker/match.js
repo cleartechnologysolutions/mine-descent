@@ -6,7 +6,7 @@ export class MineMatch {
  async fetch(request){
   if(request.headers.get('Upgrade')?.toLowerCase()!=='websocket')return new Response('WebSocket required',{status:426});
   if(this.finished||this.peers.length>=2)return new Response('Match full or finished. Create a new match.',{status:409});
-  const [client,server]=Object.values(new WebSocketPair());server.accept();const p={ws:server,index:this.peers.length,seen:Date.now(),window:Date.now(),count:0,ready:false};this.peers.push(p);
+  const [client,server]=Object.values(new WebSocketPair());server.accept();const p={ws:server,index:this.peers.length,seen:Date.now(),window:Date.now(),tokens:120,ready:false};this.peers.push(p);
   server.addEventListener('message',e=>this.message(p,e.data));server.addEventListener('close',()=>this.depart(p));server.addEventListener('error',()=>this.depart(p));
   this.send(server,{type:'joined',seat:p.index});this.broadcast({type:'waiting',count:this.peers.length});
   if(!this.timer)this.timer=setInterval(()=>this.tick(),50);
@@ -14,7 +14,7 @@ export class MineMatch {
  }
  message(p,raw){
   if(typeof raw!=='string'||raw.length>2048){p.ws.close(1009,'Input too large');return;}
-  if(Date.now()-p.window>1000){p.window=Date.now();p.count=0;}if(++p.count>40){p.ws.close(1008,'Too many messages');return;}
+  const now=Date.now();p.tokens=Math.min(120,p.tokens+Math.max(0,now-p.window)*.04);p.window=now;if(p.tokens<1){p.ws.close(1008,'Too many messages');return;}p.tokens--;
   let d;try{d=JSON.parse(raw);}catch{return;}p.seen=Date.now();
   if(!d||typeof d!=='object')return;
   if(d.type==='ready'){p.ready=true;if(this.peers.length===2&&this.peers.every(x=>x.ready)&&!this.engine){try{this.engine=createEngine();this.started=Date.now()+3000;this.broadcast({type:'start',state:this.engine.snapshot(),delay:3000});}catch{this.finish({winner:null,reason:'Match could not initialize. Try a new room.'});}}return;}

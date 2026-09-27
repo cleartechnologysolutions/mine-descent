@@ -10,7 +10,7 @@ try{
  const wait=async(f)=>{for(let i=0;i<150&&!f();i++)await new Promise(r=>setTimeout(r,100));assert(f(),'Expected socket event');};
  await wait(()=>clients.every(c=>c.events.some(e=>e.type==='start')));
  assert.equal((await mf.dispatchFetch(url,{headers:{Upgrade:'websocket',Origin:origin}})).status,409);
- clients[0].ws.send(JSON.stringify({type:'input',keys:['KeyW'],x:0,y:0}));
+ for(const c of clients)for(let i=0;i<80;i++)c.ws.send(JSON.stringify({type:'input',keys:['KeyW'],x:0,y:0}));
  await wait(()=>clients[0].events.some(e=>e.type==='state'));
  const start=clients[0].events.find(e=>e.type==='start').state,now=clients[0].events.find(e=>e.type==='state').state;
  assert.notDeepEqual(start.players[0].pos,now.players[0].pos);
