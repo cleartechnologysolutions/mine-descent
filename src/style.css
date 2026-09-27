@@ -34,3 +34,7 @@
 @media(prefers-reduced-motion:reduce){#shieldWarning{transition:none}}
 
 #chamberLabel,#keyStatus{display:block;font:11px/1.6 monospace;letter-spacing:.6px;color:#afbebf}#chamberLabel{padding-top:9px;border-top:1px solid #72808240;margin-top:12px}#keyStatus{margin-top:3px}
+
+#multiplayer{margin-top:14px;padding-top:14px;border-top:1px solid #52626a}#multiplayer button{margin:5px 4px 5px 0}#matchNotice{color:#ffe49c;font-size:14px;line-height:1.5}#matchLink{width:100%;box-sizing:border-box;padding:10px;background:#0a1721;color:#fff;border:1px solid #627781}#multiplayer [hidden]{display:none}
+
+#menu{overflow-y:auto;align-items:flex-start}#menu .menuLeft{padding-bottom:24px}#multiplayer button:not(.secondary){background:#20323e;color:#e7f2f7;border:1px solid #627781;padding:10px 14px}#multiplayer button:disabled{opacity:.5;cursor:default}

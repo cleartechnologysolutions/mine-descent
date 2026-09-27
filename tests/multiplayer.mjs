@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {createEngine} from '../worker/engine.js';
+const engine=createEngine();
+assert.notDeepEqual(engine.snapshot().players[0].pos,engine.snapshot().players[1].pos);
+engine.input(0,{keys:['KeyW']});const before=engine.snapshot().players[0].pos;for(let i=0;i<10;i++)engine.step(.05);assert.notDeepEqual(engine.snapshot().players[0].pos,before);
+engine.debug.damage(0,201);engine.step(.05);assert.equal(engine.snapshot().result.winner,1);engine.dispose();
+const reactor=createEngine();reactor.debug.pilots[0].pos.set(100,0,0);reactor.debug.pilots[1].pos.set(100,0,0);reactor.debug.reactor();for(let i=0;i<241;i++)reactor.step(.05);assert.equal(reactor.snapshot().result.winner,null);assert.equal(reactor.snapshot().result.reason,'reactor');reactor.dispose();
+console.log('PASS: separate ships, server movement, robot destruction, reactor simultaneous deaths');
+const duel=createEngine();duel.debug.pilots[0].pos.set(0,0,9);duel.debug.pilots[1].pos.set(0,0,-7);duel.input(0,{keys:['Space']});for(let i=0;i<150&&!duel.snapshot().result;i++)duel.step(.05);assert.equal(duel.snapshot().result?.winner,0);assert.equal(duel.snapshot().result?.reason,'other player');duel.dispose();
+console.log('PASS: real cannon projectiles destroy opponent and award victory');

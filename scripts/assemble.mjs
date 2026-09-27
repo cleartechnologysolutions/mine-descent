@@ -1,8 +1,10 @@
+import './multiplayer-engine.mjs';
 import {readFileSync,writeFileSync} from 'node:fs';
 const file=p=>readFileSync(new URL('../src/'+p,import.meta.url),'utf8');
 const assets={
  '/':['text/html; charset=utf-8',file('index.html')],
  '/style.css':['text/css; charset=utf-8',file('style.css')],
+ '/multiplayer.js':['text/javascript; charset=utf-8',file('multiplayer.js')],
  '/game.js':['text/javascript; charset=utf-8',file('game.js')],
  '/art.js':['text/javascript; charset=utf-8',file('art.js')],
  '/weapons.js':['text/javascript; charset=utf-8',file('weapons.js')],
@@ -16,9 +18,13 @@ const assets={
  '/LICENSE-three.txt':['text/plain; charset=utf-8',file('vendor/LICENSE')],
  '/favicon.svg':['image/svg+xml','<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#06131e"/><path d="M34 5 15 32l13 1-5 26 26-34-15 2z" fill="#c4b48f"/></svg>']
 };
-const output='// Mine Descent Cloudflare Worker. Generated from src by scripts/assemble.mjs.\nconst assets = '+JSON.stringify(assets)+';\n'+`export default {async fetch(request, env, ctx) {
+const output='import {MineMatch} from "./match.js"; export {MineMatch};\n// Mine Descent Cloudflare Worker. Generated from src by scripts/assemble.mjs.\nconst assets = '+JSON.stringify(assets)+';\n'+`export default {async fetch(request, env, ctx) {
   const url=new URL(request.url);
-  if(url.pathname==='/health')return Response.json({status:'ok',game:'Mine Descent',version:'3.2.1'});
+  if(/^\\/match\\/[a-f0-9]{24}$/.test(url.pathname)){
+    if(request.headers.get('Origin')!==url.origin)return new Response('Origin not allowed',{status:403});
+    return env.MATCHES.get(env.MATCHES.idFromName(url.pathname.slice(7))).fetch(request);
+  }
+  if(url.pathname==='/health')return Response.json({status:'ok',game:'Mine Descent',version:'4.0.0'});
   if(!['GET','HEAD'].includes(request.method))return new Response('Method not allowed',{status:405,headers:{Allow:'GET, HEAD'}});
   const asset=assets[url.pathname];
   if(!asset)return new Response('Not found',{status:404});

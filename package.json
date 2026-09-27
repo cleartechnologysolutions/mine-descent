@@ -1,12 +1,20 @@
 {
-  "name": "clear-dns",
-  "version": "0.1.0",
+  "name": "mine-descent",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "deploy": "wrangler deploy"
+  "engines": {
+    "node": ">=22"
   },
-  "devDependencies": {
-    "wrangler": "4.92.0"
+  "scripts": {
+    "start": "node scripts/serve-local.mjs",
+    "build": "node scripts/assemble.mjs",
+    "validate": "node scripts/validate.mjs",
+    "dev": "npx wrangler dev",
+    "deploy": "npm run build && npx wrangler deploy",
+    "test:audio": "node tests/audio.cjs",
+    "test:mechanics": "node tests/mechanics.mjs",
+    "test:multiplayer": "node tests/multiplayer.mjs",
+    "test:sockets": "node tests/sockets.mjs"
   }
 }

@@ -1,14 +1,22 @@
-import {installMultiplayer} from '/multiplayer.js';
-import * as T from '/three.module.min.js';
-import {IndustrialArt,CinematicPass} from '/art.js';
-import {createRobot} from '/robots.js';
-import {makeMineLayout,reactorSignal} from '/layouts.js';
-import {CANNONS,cannonById,cleanArsenal} from '/weapons.js';
+import * as T from '../src/vendor/three.module.js';
+import {IndustrialArt,CinematicPass} from '../src/art.js';
+import {createRobot} from '../src/robots.js';
+import {makeMineLayout,reactorSignal} from '../src/layouts.js';
+import {CANNONS,cannonById,cleanArsenal} from '../src/weapons.js';
+export function createEngine(){
+
+function damagePlayerSplash(p,n){player=p;damage(n,'other player');}
+const pilots=[],controls=[{},{}];let serial=0,meltdown=0,result=null;
+class Element {constructor(id){this.value=id==='difficulty'?'normal':id==='sensitivity'?'80':'65';this.style={};this.hidden=false;this.children=[];}addEventListener(){}focus(){}append(){}replaceChildren(){}getContext(){return new Proxy({},{get:()=>()=>{}});}}
+const els=new Map(),document={getElementById(id){if(!els.has(id))els.set(id,new Element(id));return els.get(id);},createElement:()=>new Element('x'),addEventListener(){}};
+const window={addEventListener(){},VoidAudio:class{start(){}update(){}setVolume(){}setMuted(){}pause(){}sfx(){}music(){}}};
+const innerWidth=1440,innerHeight=900,devicePixelRatio=1,localStorage={getItem(){return null;},setItem(){},removeItem(){}},requestAnimationFrame=()=>{};
+class MockRenderer{shadowMap={};capabilities={getMaxAnisotropy:()=>1};info={render:{}};setSize(){}setPixelRatio(){}render(){}}
 const $=id=>document.getElementById(id), clamp=(x,a,b)=>Math.max(a,Math.min(b,x)), V=(x=0,y=0,z=0)=>new T.Vector3(x,y,z);
 const canvas=$('game'),audio=new window.VoidAudio();
 let multiplayer={active:false};
 let renderer;
-try{renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});}catch(e){$('unsupported').hidden=false;throw e;}
+try{renderer=new MockRenderer({canvas,antialias:true,powerPreference:'high-performance'});}catch(e){$('unsupported').hidden=false;throw e;}
 renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;
 const art=new IndustrialArt(T,renderer),cinema=new CinematicPass(T,renderer,Math.round(innerWidth*Math.min(devicePixelRatio,1.7)),Math.round(innerHeight*Math.min(devicePixelRatio,1.7)));
 const scene=new T.Scene(),camera=new T.PerspectiveCamera(77,innerWidth/innerHeight,.12,7000);scene.add(camera);
@@ -228,7 +236,7 @@ function spawnEnemy(pos,type,room,id){
  if(evader){model.eye.material.emissive.setHex(0xae84ff);model.eye.material.color.setHex(0x3d235a);}
  enemies.push(e);return e;
 }
-function spawnPickup(pos,type,value,weapon=null){const w=cannonById(weapon),g=art.pickup(world,pos,type,w?.color);pickups.push({mesh:g,type,value,weapon,baseY:pos.y});}
+function spawnPickup(pos,type,value,weapon=null){const w=cannonById(weapon),g=art.pickup(world,pos,type,w?.color);pickups.push({netId:++serial,mesh:g,type,value,weapon,baseY:pos.y});}
 function ownedCannons(){return CANNONS.filter(w=>arsenal.owned.includes(w.id));}
 function resetCannonBrowse(){browsedCannon=arsenal.equipped;browseUntil=0;wheelDelta=0;$('weaponPicker').hidden=true;}
 function cannonAmmoText(w){return w.level?arsenal.ammo[w.id]+' '+w.ammoName:'UNLIMITED AMMO';}
@@ -283,7 +291,7 @@ function updateCannonCooling(dt){
   if(cannonBurst>=4)beginCannonRecovery();
  }
 }
-function fire(missile=false,manual=true){if(multiplayer.active)return;
+function fire(missile=false,manual=true){
  if(mode!=='play')return;const wait=missile?missileWait:fireWait;if(wait>0)return;
  if(missile&&player.missiles<=0){toast('No missiles. Find an orange resupply.',1.5);missileWait=.6;return;}
  if(!missile&&overheated&&!manual)return;
@@ -310,12 +318,12 @@ function fire(missile=false,manual=true){if(multiplayer.active)return;
 function createShot(pos,dir,type,enemy=false,target=null){
  const weapon=cannonById(type==='laser'?'pulse':type),color=enemy?0xff5136:type==='missile'?0xffc976:weapon.color;
  const m=mesh(geometries.bolt,glow(color),pos,type==='missile'?V(.25,.25,.7):enemy?V(.12,.12,.85):V(...weapon.size));m.quaternion.setFromUnitVectors(V(0,0,1),dir);
- shots.push({mesh:m,dir:dir.clone(),speed:enemy?(zone==='space'?72:29+mine*5):type==='missile'?(zone==='space'?150:66):zone==='space'?weapon.spaceSpeed:weapon.speed,
+ shots.push({netId:++serial,owner:enemy?-1:pilots.indexOf(player),mesh:m,dir:dir.clone(),speed:enemy?(zone==='space'?72:29+mine*5):type==='missile'?(zone==='space'?150:66):zone==='space'?weapon.spaceSpeed:weapon.speed,
   life:enemy?5:zone==='space'?4:2,type,enemy,target,color,splash:weapon?.splash||0,splashRadius:weapon?.splashRadius||0,
   damage:enemy?(6+mine*2)*diff():type==='missile'?100:weapon.damage+upgrades.cannon*3});
 }
 function segmentDistance(p,a,b){const ab=b.clone().sub(a),t=clamp(p.clone().sub(a).dot(ab)/Math.max(ab.lengthSq(),.001),0,1);return p.distanceTo(a.clone().addScaledVector(ab,t));}
-function explosion(pos,color=0xff8b43,scale=1){art.burst(world,pos,scale,color);for(let i=0;i<Math.floor(20*scale);i++){const velocity=V(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize().multiplyScalar((5+Math.random()*15)*scale);const m=mesh(geometries.bolt,glow(i%3===0?0xffffd1:color),pos,V(.13,.13,.13).multiplyScalar(scale));particles.push({mesh:m,vel:velocity,life:.3+Math.random()*.7,max:1,scale});}if(particles.length>450){for(const p of particles.splice(0,particles.length-450)){world.remove(p.mesh);p.mesh.material.dispose();}}flashLight.position.copy(pos);flashLight.color.setHex(color);flashLight.intensity=Math.max(flashLight.intensity,160*scale);}
+function explosion(pos,color=0xff8b43,scale=1){return;art.burst(world,pos,scale,color);for(let i=0;i<Math.floor(20*scale);i++){const velocity=V(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize().multiplyScalar((5+Math.random()*15)*scale);const m=mesh(geometries.bolt,glow(i%3===0?0xffffd1:color),pos,V(.13,.13,.13).multiplyScalar(scale));particles.push({mesh:m,vel:velocity,life:.3+Math.random()*.7,max:1,scale});}if(particles.length>450){for(const p of particles.splice(0,particles.length-450)){world.remove(p.mesh);p.mesh.material.dispose();}}flashLight.position.copy(pos);flashLight.color.setHex(color);flashLight.intensity=Math.max(flashLight.intensity,160*scale);}
 function dropEnemySupplies(e){
  const low=player.shield<=maxShield()*.25;
  const chance=e.type==='warden'?1:Math.max(e.type==='heavy'?.4:.24,low?.45:0);
@@ -350,7 +358,8 @@ function updateShots(dt){
    raycaster.set(old,s.dir);raycaster.far=travel;const obstruction=intersectWalls()[0];
    if(obstruction){distance=obstruction.distance;hit={type:'wall',object:obstruction.object};}
    const consider=(center,radius,type,object)=>{const d=sphereEntry(old,s.dir,travel,center,radius);if(d<distance){distance=d;hit={type,object};}};
-   if(s.enemy){consider(player.pos,1.55,'player');if(reactor)consider(reactor.mesh.position,5.8,'wall');for(const g of generators)if(g.hp>0)consider(g.pos,g.r,'wall');}
+   for(const p of pilots)if(p.hull>0&&(s.enemy||pilots.indexOf(p)!==s.owner))consider(p.pos,1.55,'player',p);
+   if(s.enemy){if(reactor)consider(reactor.mesh.position,5.8,'wall');for(const g of generators)if(g.hp>0)consider(g.pos,g.r,'wall');}
    else{
     for(const e of enemies)consider(e.mesh.position,e.r+(e.evader?.16:.4),'enemy',e);
     if(reactor)consider(reactor.mesh.position,reactor.active?5:6.2,'reactor');
@@ -359,11 +368,11 @@ function updateShots(dt){
   }
   const end=old.clone().addScaledVector(s.dir,distance);
   if(hit?.type==='wall'&&!s.enemy)shootDoor(hit.object);
-  if(hit?.type==='player')damage(s.damage,'enemy');
+  if(hit?.type==='player'){player=hit.object;damage(s.damage,s.enemy?'robot':'other player');}
   else if(hit?.type==='enemy')enemyHit(hit.object,s.damage);
   else if(hit?.type==='generator')hitGenerator(hit.object,s.damage);
   else if(hit?.type==='reactor'){
-   if(reactor.active){reactor.hp=Math.max(0,reactor.hp-s.damage);hitTime=.12;updateObjectives();if(reactor.hp===0){destroyReactor();return;}}
+   if(reactor.active){reactor.hp=Math.max(0,reactor.hp-s.damage);hitTime=.12;updateObjectives();if(reactor.hp===0&&!meltdown){destroyReactor();}}
    else if(toastTime<=0)toast('Containment shield active. Destroy the relays and reactor guardians.',3);
   }
   s.mesh.position.copy(end);s.mesh.quaternion.setFromUnitVectors(V(0,0,1),s.dir);
@@ -371,23 +380,16 @@ function updateShots(dt){
    if((s.type==='missile'||s.splash>0)&&!s.enemy&&mode==='play'){
     const radius=s.type==='missile'?12:s.splashRadius,damage=s.type==='missile'?70:s.splash;
     explosion(end,s.color,1.4);audio.sfx('explosion',pan(end),s.type==='missile'?1:.65);
-    for(const e of [...enemies])if(e!==hit?.object&&e.mesh.position.distanceTo(end)<radius&&visible(end,e.mesh.position))enemyHit(e,damage);
+    for(const p of pilots)if(p.hull>0&&pilots.indexOf(p)!==s.owner&&p!==hit?.object&&p.pos.distanceTo(end)<radius&&visible(end,p.pos)){player=p;damagePlayerSplash(p,damage); } for(const e of [...enemies])if(e!==hit?.object&&e.mesh.position.distanceTo(end)<radius&&visible(end,e.mesh.position))enemyHit(e,damage);
     for(const g of generators)if(g!==hit?.object&&g.hp>0&&g.pos.distanceTo(end)<radius&&visible(end,g.pos))hitGenerator(g,damage);
    }else if(s.life>0)explosion(end,s.color,.22);
    world.remove(s.mesh);s.mesh.material.dispose();shots.splice(i,1);
   }
  }
 }
-function damage(amount,source){if(mode!=='play')return;let remaining=amount;const absorbed=Math.min(player.shield,remaining);player.shield-=absorbed;remaining-=absorbed;player.hull=Math.max(0,player.hull-remaining);player.lastHit=time;damageFlash=.6;shake=Math.max(shake,.16);audio.sfx('hit');if(player.hull<=0)endGame(false,source==='reactor'?'The reactor took the mine with it.':'Hull integrity reached zero.');}
-function destroyReactor(){
- if(zone!=='mine'||!reactor||!reactor.active||reactor.hp>0)return;
- score+=1500+mine*750;pendingUpgrades++;nextMine=mine+1;
- audio.sfx('reactor');makeSpace();refill(false);releaseControls();flightInputActive=true;camera.position.copy(player.pos);camera.quaternion.copy(player.q);camera.updateMatrixWorld();
- explosion(player.pos.clone().add(V(0,0,36)),0xffad63,4);shake=.4;
- toast(nextMine<3?'Reactor destroyed. Extraction complete. Fly to the next mine; U installs your upgrade.':'Final reactor destroyed. Extraction complete. Reach the jump gate.',6);
- saveCheckpoint();updateObjectives();
-}
-function updateEnemies(dt){for(const e of enemies){if(zone==='mine'&&e.pos.distanceToSquared(player.pos)>120*120){e.mesh.visible=false;e.inSight=false;continue;}e.mesh.visible=true;e.phase+=dt;const speed=e.evader?2.8:e.type==='warden'?.36:.65;if(zone==='space'){const chase=player.pos.clone().sub(e.pos),distance=chase.length();if(distance<550&&distance>65){const proposed=e.pos.clone().addScaledVector(chase.normalize(),dt*(e.type==='heavy'?22:37));if(allowed(proposed,e.r))e.pos.copy(proposed);}}const nextPosition=e.pos.clone().add(e.evader?V(Math.sin(e.phase*speed)*3.4,Math.cos(e.phase*2.1)*2.6,Math.sin(e.phase*1.7)*2.2):V(Math.sin(e.phase*speed)*1.7,Math.cos(e.phase*.8)*1.1,Math.sin(e.phase*.4)*1.2));if(zone==='space'||allowed(nextPosition,e.r))e.mesh.position.copy(nextPosition);e.mesh.lookAt(player.pos);e.shot-=dt;e.flash-=dt;if(e.flash<=0)e.body.material.emissive.setHex(0);const dist=e.mesh.position.distanceTo(player.pos),inSight=dist<(zone==='space'?380:85)&&visible(e.mesh.position,player.pos),volume=1/(1+dist*dist/(zone==='space'?18000:2200)),prefix=e.type==='warden'?'warden':'robot';e.inSight=inSight;if(inSight&&!e.awake){e.awake=true;e.shot=Math.max(e.shot,1.6);audio.sfx(prefix+'Wake',pan(e.mesh.position),volume);}e.servo-=dt;if(inSight&&e.servo<=0){audio.sfx(prefix+'Move',pan(e.mesh.position),volume*.35);e.servo=4+Math.random()*5;}
+function damage(amount,source){if(mode!=='play')return;let remaining=amount;const absorbed=Math.min(player.shield,remaining);player.shield-=absorbed;remaining-=absorbed;player.hull=Math.max(0,player.hull-remaining);player.lastHit=time;damageFlash=.6;shake=Math.max(shake,.16);audio.sfx('hit');if(player.hull<=0)player.cause=source;}
+function destroyReactor(){if(!meltdown)meltdown=12;reactor.hp=0;}
+function updateEnemies(dt){for(const e of enemies){const target=pilots.filter(p=>p.hull>0).sort((a,b)=>a.pos.distanceToSquared(e.pos)-b.pos.distanceToSquared(e.pos))[0];if(!target)continue;player=target;if(zone==='mine'&&e.pos.distanceToSquared(player.pos)>120*120){e.mesh.visible=false;e.inSight=false;continue;}e.mesh.visible=true;e.phase+=dt;const speed=e.evader?2.8:e.type==='warden'?.36:.65;if(zone==='space'){const chase=player.pos.clone().sub(e.pos),distance=chase.length();if(distance<550&&distance>65){const proposed=e.pos.clone().addScaledVector(chase.normalize(),dt*(e.type==='heavy'?22:37));if(allowed(proposed,e.r))e.pos.copy(proposed);}}const nextPosition=e.pos.clone().add(e.evader?V(Math.sin(e.phase*speed)*3.4,Math.cos(e.phase*2.1)*2.6,Math.sin(e.phase*1.7)*2.2):V(Math.sin(e.phase*speed)*1.7,Math.cos(e.phase*.8)*1.1,Math.sin(e.phase*.4)*1.2));if(zone==='space'||allowed(nextPosition,e.r))e.mesh.position.copy(nextPosition);e.mesh.lookAt(player.pos);e.shot-=dt;e.flash-=dt;if(e.flash<=0)e.body.material.emissive.setHex(0);const dist=e.mesh.position.distanceTo(player.pos),inSight=dist<(zone==='space'?380:85)&&visible(e.mesh.position,player.pos),volume=1/(1+dist*dist/(zone==='space'?18000:2200)),prefix=e.type==='warden'?'warden':'robot';e.inSight=inSight;if(inSight&&!e.awake){e.awake=true;e.shot=Math.max(e.shot,1.6);audio.sfx(prefix+'Wake',pan(e.mesh.position),volume);}e.servo-=dt;if(inSight&&e.servo<=0){audio.sfx(prefix+'Move',pan(e.mesh.position),volume*.35);e.servo=4+Math.random()*5;}
 if(!e.charging&&e.shot<=.6&&inSight){e.charging=true;e.charge=.6;e.chargeDeadline=performance.now()+600;audio.sfx(prefix+'Charge',pan(e.mesh.position),volume);}
 if(e.charging){e.charge=Math.max(0,(e.chargeDeadline-performance.now())/1000);if(e.charge<=0){e.charging=false;e.shot=(e.type==='warden'?1.45:e.evader?1.65:2.2+Math.random())/(1+mine*.14);if(inSight){const dir=player.pos.clone().addScaledVector(player.vel,.16).sub(e.mesh.position).normalize(),origin=e.mesh.position.clone().addScaledVector(dir,e.r+1);createShot(origin,dir,'enemy',true);audio.sfx(prefix+'Fire',pan(e.mesh.position),volume);if(e.type==='warden')createShot(origin,dir.clone().add(V(.07,.02,0)).normalize(),'enemy',true);}}}e.model.animate?.(time,dt,e.charging?1-e.charge/.6:0,e.mesh.position.distanceTo(e.pos));e.mesh.updateMatrixWorld(true);}}
 function updatePickups(dt){
@@ -413,9 +415,9 @@ function updatePickups(dt){
 }
 function maxShield(){return 100+upgrades.shield*45;}
 function refill(restoreShields=true){if(restoreShields)player.shield=maxShield();player.hull=100;player.boost=100;player.heat=0;player.missiles=6+mine*2;}
-function saveCheckpoint(preserveSector=false){const base=preserveSector&&checkpoint?checkpoint:{mine,zone,nextMine,score,salvage,difficulty};checkpoint={...base,upgrades:{...upgrades},pendingUpgrades,arsenal:cleanArsenal(preserveSector&&checkpoint?checkpoint.arsenal:arsenal)};try{localStorage.setItem('voidbreak-v1',JSON.stringify(checkpoint));}catch{}}
+function saveCheckpoint(preserveSector=false){return;const base=preserveSector&&checkpoint?checkpoint:{mine,zone,nextMine,score,salvage,difficulty};checkpoint={...base,upgrades:{...upgrades},pendingUpgrades,arsenal:cleanArsenal(preserveSector&&checkpoint?checkpoint.arsenal:arsenal)};try{localStorage.setItem('voidbreak-v1',JSON.stringify(checkpoint));}catch{}}
 function readCheckpoint(){try{const s=JSON.parse(localStorage.getItem('voidbreak-v1'));if(s&&Number.isInteger(s.mine)&&s.mine>=0&&s.mine<=2&&['mine','space'].includes(s.zone)&&['easy','normal','hard'].includes(s.difficulty)&&Number.isInteger(s.nextMine)&&s.nextMine>=1&&s.nextMine<=3&&s.upgrades&&['cannon','shield','engine'].every(k=>Number.isInteger(s.upgrades[k])&&s.upgrades[k]>=0&&s.upgrades[k]<=6)&&Number.isFinite(s.score)&&Number.isFinite(s.salvage)&&(s.pendingUpgrades===undefined||(Number.isInteger(s.pendingUpgrades)&&s.pendingUpgrades>=0&&s.pendingUpgrades<=3)))return s;}catch{}return null;}
-function openUpgrade(){if(multiplayer.active)return;
+function openUpgrade(){return;
  if(mode!=='play'||zone!=='space'||pendingUpgrades<=0)return;
  mode='upgrade';releaseControls();$('upgrade').hidden=false;audio.pause(true);
  const cards=[['cannon','01 / WEAPON SYSTEM','Twin pulse cannon','Adds a second barrel and increases firing speed.'],['shield','02 / SURVIVABILITY','Shield capacitor','Adds 45 shield capacity. Restore shields with shield cells.'],['engine','03 / MOBILITY','Overdrive thrusters','12% faster thrust and faster afterburner recharge.']];
@@ -547,35 +549,19 @@ window.addEventListener('mousemove',e=>{
  drawSteering();
 });
 window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));cinema.resize(Math.round(innerWidth*Math.min(devicePixelRatio,1.7)),Math.round(innerHeight*Math.min(devicePixelRatio,1.7)));drawSteering();});
-function update(dt){if(multiplayer.active){multiplayer.tick(dt);return;}time+=dt;art.update(time,dt);flashLight.intensity*=Math.exp(-dt*14);toastTime-=dt;hitTime-=dt;comboTime-=dt;damageFlash=Math.max(0,damageFlash-dt*1.8);shake=Math.max(0,shake-dt*.8);if(toastTime<=0)$('toast').style.opacity=0;fireWait-=dt;missileWait-=dt;updateCannonCooling(dt);if(mode==='play'){movePlayer(dt);if(mode!=='play')return;if(keys.has('Space'))fire(false,false);if(keys.has('KeyX'))fire(true);updateEnemies(dt);const previousZone=zone;updateShots(dt);if(mode!=='play'||zone!==previousZone)return;updatePickups(dt);for(const d of decor){if(d.type==='gate')d.mesh.rotation.z+=dt*.14;if(d.type==='anomaly'){d.mesh.rotation.y+=dt*.24;d.mesh.rotation.z+=dt*.1;}}if(reactor){reactor.core.rotation.y+=dt*.3;reactor.core.material.emissiveIntensity=2.4+Math.sin(time*3)*.5;reactor.shield.rotation.y+=dt*.2;}for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;p.mesh.position.addScaledVector(p.vel,dt);if(p.light)p.mesh.intensity*=.83;else p.mesh.scale.multiplyScalar(Math.max(0,1-dt*1.5));if(p.life<=0){world.remove(p.mesh);if(p.mesh.material)p.mesh.material.dispose();particles.splice(i,1);}}camera.position.copy(player.pos);camera.quaternion.copy(player.q);if(shake>0)camera.position.add(V((Math.random()-.5)*shake,(Math.random()-.5)*shake,0));camera.fov=T.MathUtils.lerp(camera.fov,77+(player.vel.length()/(zone==='space'?150:44))*7,dt*5);camera.updateProjectionMatrix();camera.updateMatrixWorld();updateHUD(dt);}}
+function update(dt){time+=dt;art.update(time,dt);flashLight.intensity*=Math.exp(-dt*14);toastTime-=dt;hitTime-=dt;comboTime-=dt;damageFlash=Math.max(0,damageFlash-dt*1.8);shake=Math.max(0,shake-dt*.8);if(toastTime<=0)$('toast').style.opacity=0;fireWait-=dt;missileWait-=dt;updateCannonCooling(dt);if(mode==='play'){movePlayer(dt);if(mode!=='play')return;if(keys.has('Space'))fire(false,false);if(keys.has('KeyX'))fire(true);updateEnemies(dt);const previousZone=zone;updateShots(dt);if(mode!=='play'||zone!==previousZone)return;updatePickups(dt);for(const d of decor){if(d.type==='gate')d.mesh.rotation.z+=dt*.14;if(d.type==='anomaly'){d.mesh.rotation.y+=dt*.24;d.mesh.rotation.z+=dt*.1;}}if(reactor){reactor.core.rotation.y+=dt*.3;reactor.core.material.emissiveIntensity=2.4+Math.sin(time*3)*.5;reactor.shield.rotation.y+=dt*.2;}for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;p.mesh.position.addScaledVector(p.vel,dt);if(p.light)p.mesh.intensity*=.83;else p.mesh.scale.multiplyScalar(Math.max(0,1-dt*1.5));if(p.life<=0){world.remove(p.mesh);if(p.mesh.material)p.mesh.material.dispose();particles.splice(i,1);}}camera.position.copy(player.pos);camera.quaternion.copy(player.q);if(shake>0)camera.position.add(V((Math.random()-.5)*shake,(Math.random()-.5)*shake,0));camera.fov=T.MathUtils.lerp(camera.fov,77+(player.vel.length()/(zone==='space'?150:44))*7,dt*5);camera.updateProjectionMatrix();camera.updateMatrixWorld();updateHUD(dt);}}
 function menuScene(){makeMine(0);mode='menu';$('hud').hidden=true;$('toast').style.opacity=0;camera.position.set(0,2,12);camera.lookAt(-6,0,-14);if(enemies[0]){enemies[0].pos.set(5,0,-6);enemies[0].mesh.position.copy(enemies[0].pos);enemies[0].mesh.lookAt(camera.position);enemies[0].mesh.scale.setScalar(1.2);}cockpit.visible=false;}
-let last=performance.now();function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.035);last=now;if(mode==='play')update(dt);else if(mode==='menu'){time+=dt;art.update(time,dt);camera.position.x=Math.sin(time*.1)*.4;camera.lookAt(-6,0,-14);for(const e of enemies){e.model.animate?.(time,dt,0,0);}}cinema.render(scene,camera,time);}menuScene();requestAnimationFrame(frame);
-// Read-only diagnostics for support and automated mechanical checks.
-window.minedescent={snapshot:()=>({mode,zone,mine,nextMine,stage,enemies:enemies.length,hull:player.hull,shield:player.shield,score,salvage,rooms:rooms.length,surveyed:visitedRooms.size,room:mineLayout?.roomIdentity[currentRoom]?.name,hasReactorKey,gateSeen,wingEntered,pendingUpgrades,upgrades:{...upgrades},arsenal:cleanArsenal(arsenal),position:player.pos.toArray(),renderer:renderer.info.render}),version:'4.0.0'};
 
-// Multiplayer adapter: the server owns physics/combat, the browser renders snapshots.
-const netShots=new Map(),netPickups=new Map();let rival=null,priorHealth=200,firstNetFrame=true,netWeapon=null,netMeltdown=0;
-multiplayer=installMultiplayer({
- unlock(){audio.start();audio.pause(false);},
- reset(seat){makeMine(0);mode='menu';priorHealth=200;for(const p of pickups){world.remove(p.mesh);disposeGroup(p.mesh);}pickups=[];
-  rival=new T.Group();const hull=new T.Mesh(new T.ConeGeometry(1.1,3.7,6),mat(seat===0?0xffc43d:0x3399ff));hull.rotation.x=-Math.PI/2;rival.add(hull);
-  box(V(0,0,.4),V(4,.25,1.3),mat(0x9aa9b7),rival);box(V(0,.55,0),V(.8,.5,1.2),glow(seat===0?0xffdf55:0x66cfff),rival);world.add(rival);
- },
- start(){document.querySelector?.('.runStatus small')?.replaceChildren('LAST SHIP STANDING');document.querySelector?.('#pause .eyebrow')?.replaceChildren('MULTIPLAYER CONTINUES WHILE PAUSED');resumePlay();$('restart').textContent='Leave multiplayer';},
- input(enabled){return {sensitivity:Number($('sensitivity').value),invert:$('invert').checked,weapon:netWeapon||arsenal.equipped,keys:enabled&&mode==='play'&&flightInputActive?[...keys]:[],x:enabled&&mode==='play'?steering.x:0,y:enabled&&mode==='play'?steering.y:0,left:enabled&&mode==='play'&&mouse.left,right:enabled&&mode==='play'&&mouse.right};},
- notice(text){$('toast').textContent=text;$('toast').style.opacity=1;},
- finish(title,reason){mode='end';releaseControls();$('menu').hidden=true;$('pause').hidden=true;$('ending').hidden=false;$('hud').hidden=true;$('endLabel').textContent='TWO PLAYER';$('endTitle').textContent=title;$('endText').textContent=reason;$('retry').hidden=true;$('newRun').textContent='Back to menu';$('newRun').onclick=()=>{location.href=location.pathname;};audio.sfx(title==='You win!'?'warp':'reactor');},
- render(state,seat,dt){time+=dt;art.update(time,dt);const p=state.players[seat],other=state.players[1-seat];
-  if(firstNetFrame){player.pos.fromArray(p.pos);player.q.fromArray(p.q);rival.position.fromArray(other.pos);firstNetFrame=false;}
-  player.pos.lerp(V(...p.pos),Math.min(1,dt*18));player.q.slerp(new T.Quaternion(...p.q),Math.min(1,dt*22));for(const k of ['hull','shield','heat','boost','missiles'])player[k]=p[k];arsenal=cleanArsenal(p.arsenal);if(netWeapon===arsenal.equipped)netWeapon=null;overheated=p.hot;cannonRecovery=p.recovery;
-  if(p.hull+p.shield<priorHealth){audio.sfx('hit');damageFlash=.6;}priorHealth=p.hull+p.shield;damageFlash=Math.max(0,damageFlash-dt);
-  rival.visible=other.hull>0;rival.position.lerp(V(...other.pos),Math.min(1,dt*18));rival.quaternion.slerp(new T.Quaternion(...other.q),Math.min(1,dt*22));
-  const enemyStates=new Map(state.enemies.map(e=>[e.id,e]));for(const e of [...enemies]){const n=enemyStates.get(e.id);if(!n){world.remove(e.mesh);disposeGroup(e.mesh);enemies.splice(enemies.indexOf(e),1);art.burst(world,e.mesh.position,1,0xff9944);audio.sfx('robotDeath');continue;}e.hp=n.hp;e.mesh.visible=true;e.mesh.position.lerp(V(...n.pos),Math.min(1,dt*18));e.mesh.quaternion.fromArray(n.q);e.model.animate?.(time,dt,0,0);}
-  const sync=(map,items,create)=>{const ids=new Set(items.map(n=>n.id));for(const [id,m]of map)if(!ids.has(id)){world.remove(m);disposeGroup(m);map.delete(id);}for(const n of items){let m=map.get(n.id);if(!m){m=create(n);map.set(n.id,m);}m.position.fromArray(n.pos);if(n.q)m.quaternion.fromArray(n.q);}};
-  sync(netShots,state.shots,n=>{const m=mesh(geometries.bolt,glow(n.enemy?0xff5136:n.type==='missile'?0xffc976:0x66cfff),V(...n.pos),V(.18,.18,.8));audio.sfx(n.enemy?'robotFire':n.type==='missile'?'missile':'laser',pan(m.position),.3);return m;});
-  sync(netPickups,state.pickups,n=>art.pickup(world,V(...n.pos),n.type,cannonById(n.weapon)?.color));
-  state.doors.forEach((n,i)=>{Object.assign(doors[i],n);positionDoor(doors[i]);});state.generators.forEach((hp,i)=>{generators[i].hp=hp;generators[i].mesh.visible=hp>0;});
-  reactor.hp=state.reactor.hp;reactor.active=state.reactor.active;reactor.shield.visible=!reactor.active;reactor.core.rotation.y+=dt*.3;hasReactorKey=state.hasReactorKey;netMeltdown=state.meltdown;
-  currentRoom=nearestRoom(player.pos);visitedRooms.add(currentRoom);art.updateLighting(player.pos);camera.position.copy(player.pos);camera.quaternion.copy(player.q);camera.updateMatrixWorld();updateObjectives();updateHUD(dt);audio.update({speed:0,combat:enemies.some(e=>e.mesh.position.distanceTo(player.pos)<60)?1:0,danger:player.hull<30?.7:0,reactor:reactorProximity()},dt);if(netMeltdown>0){$('phase').textContent='REACTOR MELTDOWN';$('objective').textContent='Return to the starting room';$('detail').textContent='Stay within 12 m of its center to survive the blast.';$('timer').hidden=false;$('timer').textContent=Math.ceil(netMeltdown)+'s';}
- }
-});
+makeMine(0);mode='play';flightInputActive=true;
+for(let i=0;i<2;i++){pilots.push({pos:rooms[i?1:0].clone().add(V(0,0,9)),q:new T.Quaternion(),vel:V(),shield:100,hull:100,heat:0,boost:100,missiles:6,lastHit:-100,fw:0,mw:0,burst:0,recovery:0,hot:false,arsenal:cleanArsenal()});}
+function select(p){player=p;fireWait=p.fw;missileWait=p.mw;cannonBurst=p.burst;cannonRecovery=p.recovery;overheated=p.hot;arsenal=p.arsenal;}
+function retain(p){p.fw=fireWait;p.mw=missileWait;p.burst=cannonBurst;p.recovery=cannonRecovery;p.hot=overheated;}
+function step(dt){if(result)return;time+=dt;
+ for(let i=0;i<2;i++){const p=pilots[i];if(p.hull<=0)continue;select(p);const c=controls[i];$('sensitivity').value=c.sensitivity||80;$('invert').checked=!!c.invert;if(arsenal.owned.includes(c.weapon))arsenal.equipped=c.weapon;keys.clear();for(const k of c.keys||[])keys.add(k);steering.x=c.x||0;steering.y=c.y||0;mouse.left=!!c.left;mouse.right=!!c.right;flightInputActive=true;fireWait-=dt;missileWait-=dt;updateCannonCooling(dt);movePlayer(dt);if(keys.has('Space'))fire(false,!p.wasFire);if(keys.has('KeyX'))fire(true);p.wasFire=keys.has('Space');updatePickups(dt);retain(p);}
+ updateEnemies(dt);world.updateMatrixWorld(true);updateShots(dt);
+ if(meltdown>0){meltdown-=dt;if(meltdown<=0){for(const p of pilots)if(p.pos.distanceTo(rooms[0])>12){p.hull=0;p.cause='reactor';}result={winner:pilots[0].hull>0&&pilots[1].hull<=0?0:pilots[1].hull>0&&pilots[0].hull<=0?1:null,reason:'Reactor explosion'};}}
+ const alive=pilots.map((p,i)=>p.hull>0?i:-1).filter(i=>i>=0);if(alive.length<2)result={winner:alive.length?alive[0]:null,reason:pilots.find(p=>p.hull<=0)?.cause||'Ship destroyed'};
+}
+return {step,input(i,c){controls[i]=c;},snapshot(){return {players:pilots.map(p=>({pos:p.pos.toArray(),q:p.q.toArray(),shield:p.shield,hull:p.hull,heat:p.heat,boost:p.boost,missiles:p.missiles,hot:p.hot,recovery:p.recovery,arsenal:p.arsenal})),enemies:enemies.map(e=>({id:e.id,pos:e.mesh.position.toArray(),q:e.mesh.quaternion.toArray(),hp:e.hp})),shots:shots.map(s=>({id:s.netId,pos:s.mesh.position.toArray(),q:s.mesh.quaternion.toArray(),type:s.type,enemy:s.enemy,owner:s.owner})),pickups:pickups.map(p=>({id:p.netId,pos:p.mesh.position.toArray(),type:p.type,value:p.value,weapon:p.weapon})),doors:doors.map(d=>({open:d.open,hold:d.hold,locked:d.locked})),generators:generators.map(g=>g.hp),reactor:{hp:reactor.hp,active:reactor.active},hasReactorKey,meltdown,result};},dispose(){clearWorld();},debug:{pilots,damage:(i,n)=>{player=pilots[i];damage(n,'robot');},reactor:()=>{reactor.active=true;reactor.hp=0;destroyReactor();}}};
+
+}
